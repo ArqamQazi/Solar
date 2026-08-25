@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Solar Monitor - Real-time Solar Panel Dashboard</title>
+  <meta name="description" content="Monitor your solar panel power generation in real-time. Track daily, monthly energy production with beautiful charts. ESP32 + INA219 powered IoT dashboard.">
+  <meta name="keywords" content="solar panel, monitoring, dashboard, ESP32, IoT, energy, power generation">
+  
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#FFB800">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+  
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <!-- Status Bar -->
+  <div class="status-bar" id="statusBar">
+    <div class="status-indicator">
+      <span class="dot connected" id="connectionDot"></span>
+      <span id="connectionText">Connected</span>
+    </div>
+    <div class="time-indicator" id="lastUpdated">--:--</div>
+  </div>
+
+  <!-- Main Content Area -->
+  <main class="app-content">
+    
+    <!-- DASHBOARD VIEW -->
+    <section id="view-dashboard" class="view active">
+      <div class="header">
+        <h1>Overview</h1>
+        <div class="status-badge" id="systemStatus">
+          <i class="fas fa-sun"></i> Generating
+        </div>
+      </div>
+
+      <div class="card glass hero-card">
+        <h3>Live Power</h3>
+        <div class="power-display">
+          <span class="value" id="livePower">0.0</span>
+          <span class="unit">W</span>
+        </div>
+        <div class="live-metrics">
+          <div class="metric">
+            <span class="label">Voltage</span>
+            <span class="val" id="liveVoltage">0.0 V</span>
+          </div>
+          <div class="metric divider"></div>
+          <div class="metric">
+            <span class="label">Current</span>
+            <span class="val" id="liveCurrent">0.0 A</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card glass stats-grid">
+        <div class="stat-item">
+          <div class="stat-icon"><i class="fas fa-bolt"></i></div>
+          <div class="stat-content">
+            <span class="stat-label">Today</span>
+            <span class="stat-val" id="statToday">0.0</span>
+            <span class="stat-unit">kWh</span>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon"><i class="fas fa-calendar-week"></i></div>
+          <div class="stat-content">
+            <span class="stat-label">This Week</span>
+            <span class="stat-val" id="statWeek">0.0</span>
+            <span class="stat-unit">kWh</span>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
+          <div class="stat-content">
+            <span class="stat-label">This Month</span>
+            <span class="stat-val" id="statMonth">0.0</span>
+            <span class="stat-unit">kWh</span>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon"><i class="fas fa-history"></i></div>
+          <div class="stat-content">
+            <span class="stat-label">All Time</span>
+            <span class="stat-val" id="statAllTime">0.0</span>
+            <span class="stat-unit">kWh</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DAILY VIEW -->
+    <section id="view-daily" class="view">
+      <div class="header">
+        <h1>Daily Production</h1>
+      </div>
+      <div class="controls-bar glass">
+        <button class="icon-btn" id="prevDayBtn"><i class="fas fa-chevron-left"></i></button>
+        <input type="date" id="datePicker" class="date-picker">
+        <button class="icon-btn" id="nextDayBtn"><i class="fas fa-chevron-right"></i></button>
+      </div>
+      
+      <div class="card glass chart-card">
+        <canvas id="dailyChart"></canvas>
+      </div>
+      
+      <div class="summary-cards">
+        <div class="summary-card glass">
+          <span class="label">Total Energy</span>
+          <span class="val" id="dailyTotal">0.0 <small>kWh</small></span>
+        </div>
+        <div class="summary-card glass">
+          <span class="label">Peak Power</span>
+          <span class="val" id="dailyPeak">0 <small>W</small></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- MONTHLY VIEW -->
+    <section id="view-monthly" class="view">
+      <div class="header">
+        <h1>Monthly History</h1>
+      </div>
+      <div class="controls-bar glass">
+        <button class="icon-btn" id="prevMonthBtn"><i class="fas fa-chevron-left"></i></button>
+        <input type="month" id="monthPicker" class="date-picker">
+        <button class="icon-btn" id="nextMonthBtn"><i class="fas fa-chevron-right"></i></button>
+      </div>
+      
+      <div class="card glass chart-card">
+        <canvas id="monthlyChart"></canvas>
+      </div>
+      
+      <div class="summary-cards">
+        <div class="summary-card glass">
+          <span class="label">Monthly Total</span>
+          <span class="val" id="monthlyTotal">0.0 <small>kWh</small></span>
+        </div>
+        <div class="summary-card glass">
+          <span class="label">Daily Avg</span>
+          <span class="val" id="monthlyAvg">0.0 <small>kWh</small></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS VIEW -->
+    <section id="view-settings" class="view">
+      <div class="header">
+        <h1>Settings</h1>
+      </div>
+      
+      <div class="card glass settings-card">
+        <h3>System Info</h3>
+        <div class="setting-row">
+          <span>App Version</span>
+          <span>1.0.0</span>
+        </div>
+        <div class="setting-row">
+          <span>Database</span>
+          <span id="dbStatus">Disconnected</span>
+        </div>
+        <div class="setting-row">
+          <span>Last Sync</span>
+          <span id="lastSyncTime">Never</span>
+        </div>
+      </div>
+      
+      <div class="card glass settings-card">
+        <h3>Developer Options</h3>
+        <p class="help-text">Populate database with 30 days of simulated solar generation data.</p>
+        <button id="btnLoadDemoData" class="btn primary-btn"><i class="fas fa-database"></i> Load Demo Data</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav class="bottom-nav glass">
+    <a href="#" class="nav-item active" data-target="view-dashboard">
+      <i class="fas fa-home"></i>
+      <span>Home</span>
+    </a>
+    <a href="#" class="nav-item" data-target="view-daily">
+      <i class="fas fa-chart-bar"></i>
+      <span>Daily</span>
+    </a>
+    <a href="#" class="nav-item" data-target="view-monthly">
+      <i class="fas fa-calendar-alt"></i>
+      <span>Monthly</span>
+    </a>
+    <a href="#" class="nav-item" data-target="view-settings">
+      <i class="fas fa-cog"></i>
+      <span>Settings</span>
+    </a>
+  </nav>
+
+  <!-- App Scripts -->
+  <script src="js/firebase-config.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
