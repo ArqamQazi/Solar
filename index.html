@@ -312,11 +312,15 @@
         
         <div class="hotspot-status-box" id="hotspotStatusBox">
           <div class="status-indicator">
-            <span class="dot offline" id="hotspotDot"></span>
-            <span id="hotspotStatusText">Checking Solar_Setup Hotspot...</span>
+            <span class="dot connected" id="hotspotDot"></span>
+            <span id="hotspotStatusText">Checking connection mode...</span>
           </div>
           <button class="check-btn" id="btnCheckHotspot" type="button" title="Refresh detection"><i class="fas fa-sync-alt"></i></button>
         </div>
+
+        <p class="help-text" style="font-size: 11px; margin-top: 6px; margin-bottom: 12px; color: var(--text-secondary);">
+          Note: Solar_Setup hotspot is only active when Wi-Fi is lost or being reconfigured.
+        </p>
 
         <div class="wifi-instructions">
           <div class="instruction-step">
@@ -329,9 +333,13 @@
           </div>
         </div>
 
-        <a href="http://192.168.4.1" target="_blank" rel="noopener noreferrer" class="btn primary-btn" id="btnOpenHotspotPortal" style="text-decoration: none; margin-bottom: 14px;">
+        <a href="http://192.168.4.1" target="_blank" rel="noopener noreferrer" class="btn primary-btn" id="btnOpenHotspotPortal" style="text-decoration: none; margin-bottom: 10px;">
           <i class="fas fa-external-link-alt"></i> Open Wi-Fi Portal (192.168.4.1)
         </a>
+
+        <button id="btnResetWifi" type="button" class="btn secondary-btn" style="margin-bottom: 14px; width: 100%;">
+          <i class="fas fa-undo"></i> Switch Wi-Fi Network (Reset Wi-Fi)
+        </button>
 
         <div class="setting-divider"></div>
 
@@ -452,8 +460,8 @@
   </nav>
 
   <!-- App Scripts -->
-  <script src="js/firebase-config.js?v=8"></script>
-  <script src="js/charts.js?v=8"></script>
-  <script src="js/app.js?v=8"></script>
+  <script src="js/firebase-config.js?v=9"></script>
+  <script src="js/charts.js?v=9"></script>
+  <script src="js/app.js?v=9"></script>
 </body>
 </html>

@@ -636,7 +636,7 @@ async function checkHotspotConnection() {
   if (!dot || !text) return;
 
   dot.className = 'dot';
-  text.textContent = 'Detecting Solar_Setup...';
+  text.textContent = 'Checking connection mode...';
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
@@ -649,11 +649,11 @@ async function checkHotspotConnection() {
     });
     clearTimeout(timeoutId);
     dot.className = 'dot connected';
-    text.textContent = 'Solar_Setup Hotspot Detected';
+    text.textContent = 'Solar_Setup Hotspot Detected (Setup Mode)';
   } catch (err) {
     clearTimeout(timeoutId);
-    dot.className = 'dot offline';
-    text.textContent = 'Not connected to Solar_Setup';
+    dot.className = 'dot connected';
+    text.textContent = 'Normal Mode (ESP32 online via router)';
   }
 }
 
@@ -669,6 +669,29 @@ function setupWifiConfiguration() {
   const checkBtn = document.getElementById('btnCheckHotspot');
   if (checkBtn) {
     checkBtn.addEventListener('click', checkHotspotConnection);
+  }
+
+  const resetBtn = document.getElementById('btnResetWifi');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      const confirmed = confirm('Switch Wi-Fi network? The ESP32 will clear its saved Wi-Fi and reboot into "Solar_Setup" hotspot mode in about 30 seconds.');
+      if (!confirmed) return;
+
+      resetBtn.disabled = true;
+      resetBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending Reset Signal...';
+
+      try {
+        await database.ref('control/reset_wifi').set(true);
+        showWifiFeedback('Reset signal sent to ESP32. In about 30 seconds, the ESP32 will restart into "Solar_Setup" hotspot. Connect your phone Wi-Fi to "Solar_Setup" to pick your new network.', 'success');
+      } catch (err) {
+        showWifiFeedback('Failed to send reset signal. Check internet connection.', 'error');
+      } finally {
+        setTimeout(() => {
+          resetBtn.disabled = false;
+          resetBtn.innerHTML = '<i class="fas fa-undo"></i> Switch Wi-Fi Network (Reset Wi-Fi)';
+        }, 5000);
+      }
+    });
   }
 
   const submitBtn = document.getElementById('btnSubmitWifiCredentials');
