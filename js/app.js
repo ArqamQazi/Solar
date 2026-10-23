@@ -813,7 +813,13 @@ const BATTERY_CHEMISTRIES = {
 function getBatteryProfile() {
   try {
     const saved = localStorage.getItem('solar_battery_profile');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.type === 'lead-acid' && parsed.maxVolt <= 13.0) {
+        parsed.maxVolt = 14.4;
+      }
+      return parsed;
+    }
   } catch (e) {
     // Local storage unavailable
   }
@@ -841,8 +847,8 @@ function calculateBatteryPercentage(volts) {
   const multiplier = Number(profile.multiplier) || 1;
 
   if (type === 'custom' || !BATTERY_CHEMISTRIES[type] || !BATTERY_CHEMISTRIES[type].curve) {
-    const minV = Number(profile.minVolt) || 10.5;
-    const maxV = Number(profile.maxVolt) || 12.8;
+    const minV = Number(profile.minVolt) || (10.5 * multiplier);
+    const maxV = Number(profile.maxVolt) || (14.4 * multiplier);
     if (volts <= minV) return 0;
     if (volts >= maxV) return 100;
     return Math.round(((volts - minV) / (maxV - minV)) * 100);
@@ -889,14 +895,26 @@ function renderCurveChips(type, multiplier) {
   if (!container) return;
   container.innerHTML = '';
 
+  const minInput = document.getElementById('batteryMinVolt');
+  const maxInput = document.getElementById('batteryMaxVolt');
+  const minV = parseFloat(minInput ? minInput.value : 10.5) || (10.5 * multiplier);
+  const maxV = parseFloat(maxInput ? maxInput.value : 14.4) || (14.4 * multiplier);
+
   if (type === 'custom' || !BATTERY_CHEMISTRIES[type] || !BATTERY_CHEMISTRIES[type].curve) {
-    container.innerHTML = '<span class="curve-chip">Linear interpolation between Min and Max</span>';
+    const steps = [100, 75, 50, 25, 0];
+    steps.forEach(p => {
+      const v = (minV + (maxV - minV) * (p / 100)).toFixed(1);
+      const chip = document.createElement('span');
+      chip.className = 'curve-chip';
+      chip.textContent = `${p}%: ${v}V`;
+      container.appendChild(chip);
+    });
     return;
   }
 
   const curve = BATTERY_CHEMISTRIES[type].curve;
   curve.forEach(([v, p]) => {
-    if (p % 20 === 0 || p === 100 || p === 0) {
+    if (p === 100 || p === 95 || p === 75 || p === 50 || p === 20 || p === 0) {
       const scaledV = (v * multiplier).toFixed(1);
       const chip = document.createElement('span');
       chip.className = 'curve-chip';
@@ -923,6 +941,13 @@ function setupBatteryConfiguration() {
   maxInput.value = profile.maxVolt;
 
   renderCurveChips(profile.type, Number(profile.multiplier || 1));
+
+  const onCustomRangeChange = () => {
+    typeSelect.value = 'custom';
+    renderCurveChips('custom', Number(multSelect.value) || 1);
+  };
+  minInput.addEventListener('input', onCustomRangeChange);
+  maxInput.addEventListener('input', onCustomRangeChange);
 
   typeSelect.addEventListener('change', () => {
     const selectedType = typeSelect.value;
@@ -952,7 +977,7 @@ function setupBatteryConfiguration() {
         type: typeSelect.value,
         multiplier: Number(multSelect.value) || 1,
         minVolt: parseFloat(minInput.value) || 10.5,
-        maxVolt: parseFloat(maxInput.value) || 12.8
+        maxVolt: parseFloat(maxInput.value) || 14.4
       };
       saveBatteryProfile(newProfile);
 
