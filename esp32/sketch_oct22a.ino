@@ -134,21 +134,37 @@ void loadEnergyFromNvs() {
   }
 }
 
-void syncTodayKwhFromFirebase() {
+void syncTodayEnergyFromFirebase() {
   HTTPClient http;
-  String url = firebaseUrl + "/stats/today_kwh.json?auth=" + firebaseAuth;
+  String url = firebaseUrl + "/stats.json?auth=" + firebaseAuth;
   http.begin(url);
   int httpCode = http.GET();
   if (httpCode == 200) {
     String payload = http.getString();
-    payload.trim();
-    float cloudKwh = payload.toFloat();
-    float cloudWh = cloudKwh * 1000.0;
-    if (cloudWh > currentDayWh) {
-      currentDayWh = cloudWh;
-      Serial.printf("Synced higher energy generation from Firebase: %.2f Wh\n", currentDayWh);
-      saveEnergyToNvs();
-    }
+    auto getVal = [&](String key) -> float {
+      int idx = payload.indexOf("\"" + key + "\":");
+      if (idx < 0) return 0.0;
+      int start = idx + key.length() + 3;
+      int end = payload.indexOf(",", start);
+      if (end < 0) end = payload.indexOf("}", start);
+      if (end < 0) return 0.0;
+      return payload.substring(start, end).toFloat();
+    };
+
+    float cloudKwh = getVal("today_kwh");
+    float cloudConsKwh = getVal("today_consumed_kwh");
+    float cloudBattKwh = getVal("today_battery_discharged_kwh");
+    float cloudLoadKwh = getVal("today_load_kwh");
+    float cloudInvKwh = getVal("today_inverter_kwh");
+
+    if (cloudKwh * 1000.0 > currentDayWh) currentDayWh = cloudKwh * 1000.0;
+    if (cloudConsKwh * 1000.0 > currentDayConsumedWh) currentDayConsumedWh = cloudConsKwh * 1000.0;
+    if (cloudBattKwh * 1000.0 > currentDayBatteryDischargedWh) currentDayBatteryDischargedWh = cloudBattKwh * 1000.0;
+    if (cloudLoadKwh * 1000.0 > currentDayLoadWh) currentDayLoadWh = cloudLoadKwh * 1000.0;
+    if (cloudInvKwh * 1000.0 > currentDayInverterWh) currentDayInverterWh = cloudInvKwh * 1000.0;
+
+    Serial.printf("Synced energy from Firebase: Gen %.2f Wh, Consumed %.2f Wh\n", currentDayWh, currentDayConsumedWh);
+    saveEnergyToNvs();
   }
   http.end();
 }
@@ -286,7 +302,7 @@ void setup() {
 
   delay(1000);
   loadEnergyFromNvs();
-  syncTodayKwhFromFirebase();
+  syncTodayEnergyFromFirebase();
   scanAndUploadNetworks();
 }
 
@@ -372,11 +388,27 @@ void loop() {
       float todayLoadKwh = currentDayLoadWh / 1000.0;
       float todayInverterKwh = currentDayInverterWh / 1000.0;
 
-      httpPut("/stats/today_kwh.json", String(todayKwh, 3));
-      httpPut("/stats/today_consumed_kwh.json", String(todayConsumedKwh, 3));
-      httpPut("/stats/today_battery_discharged_kwh.json", String(todayBattDischargedKwh, 3));
-      httpPut("/stats/today_load_kwh.json", String(todayLoadKwh, 3));
-      httpPut("/stats/today_inverter_kwh.json", String(todayInverterKwh, 3));
+      httpPut("/stats/today_kwh.json", String(todayKwh, 4));
+      httpPut("/stats/today_consumed_kwh.json", String(todayConsumedKwh, 4));
+      httpPut("/stats/today_battery_discharged_kwh.json", String(todayBattDischargedKwh, 4));
+      httpPut("/stats/today_load_kwh.json", String(todayLoadKwh, 4));
+      httpPut("/stats/today_inverter_kwh.json", String(todayInverterKwh, 4));
+
+      struct tm curTime;
+      if (getLocalTime(&curTime)) {
+        char curMonth[8];
+        char curDay[3];
+        strftime(curMonth, sizeof(curMonth), "%Y-%m", &curTime);
+        strftime(curDay, sizeof(curDay), "%d", &curTime);
+        String liveDayPath = "/daily/" + String(curMonth) + "/" + String(curDay) + ".json";
+        String liveDayPayload = "{\"energy_kwh\":" + String(todayKwh, 3) + 
+                                ",\"peak_w\":" + String(currentHourPeakW, 1) + 
+                                ",\"consumed_kwh\":" + String(todayConsumedKwh, 3) + 
+                                ",\"battery_discharged_kwh\":" + String(todayBattDischargedKwh, 3) + 
+                                ",\"load_kwh\":" + String(todayLoadKwh, 3) + 
+                                ",\"inverter_kwh\":" + String(todayInverterKwh, 3) + "}";
+        httpPut(liveDayPath, liveDayPayload);
+      }
 
       saveEnergyToNvs();
     }
@@ -409,8 +441,13 @@ void loop() {
       if (lastHour == -1) {
         lastHour = timeinfo.tm_hour;
       } else if (lastHour != timeinfo.tm_hour) {
+        time_t nowSec = time(nullptr);
+        time_t finishedHourSec = nowSec - 1800;
+        struct tm finishedInfo;
+        localtime_r(&finishedHourSec, &finishedInfo);
+
         char dateStr[11];
-        strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", &timeinfo);
+        strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", &finishedInfo);
         String hourPath = "/hourly/" + String(dateStr) + "/" + String(lastHour) + ".json";
         String hourPayload = "{\"energy_wh\":" + String(currentHourWh, 2) + 
                              ",\"peak_w\":" + String(currentHourPeakW, 1) + 
@@ -424,8 +461,8 @@ void loop() {
         if (timeinfo.tm_hour == 0) {
           char monthStr[8];
           char dayStr[3];
-          strftime(monthStr, sizeof(monthStr), "%Y-%m", &timeinfo);
-          strftime(dayStr, sizeof(dayStr), "%d", &timeinfo);
+          strftime(monthStr, sizeof(monthStr), "%Y-%m", &finishedInfo);
+          strftime(dayStr, sizeof(dayStr), "%d", &finishedInfo);
 
           float dailyKwh = currentDayWh / 1000.0;
           float dailyConsumedKwh = currentDayConsumedWh / 1000.0;
@@ -434,12 +471,12 @@ void loop() {
           float dailyInverterKwh = currentDayInverterWh / 1000.0;
 
           String dayPath = "/daily/" + String(monthStr) + "/" + String(dayStr) + ".json";
-          String dayPayload = "{\"energy_kwh\":" + String(dailyKwh, 2) + 
+          String dayPayload = "{\"energy_kwh\":" + String(dailyKwh, 3) + 
                               ",\"peak_w\":" + String(currentHourPeakW, 1) + 
-                              ",\"consumed_kwh\":" + String(dailyConsumedKwh, 2) + 
-                              ",\"battery_discharged_kwh\":" + String(dailyBattKwh, 2) + 
-                              ",\"load_kwh\":" + String(dailyLoadKwh, 2) + 
-                              ",\"inverter_kwh\":" + String(dailyInverterKwh, 2) + "}";
+                              ",\"consumed_kwh\":" + String(dailyConsumedKwh, 3) + 
+                              ",\"battery_discharged_kwh\":" + String(dailyBattKwh, 3) + 
+                              ",\"load_kwh\":" + String(dailyLoadKwh, 3) + 
+                              ",\"inverter_kwh\":" + String(dailyInverterKwh, 3) + "}";
           httpPut(dayPath, dayPayload);
           Serial.println("Saved daily rollup: " + dayPayload);
 

@@ -109,6 +109,19 @@ function formatMonthForInput(date) {
   return `${yyyy}-${mm}`;
 }
 
+function isSameDay(d1, d2) {
+  if (!d1 || !d2) return false;
+  return formatDateForInput(new Date(d1)) === formatDateForInput(new Date(d2));
+}
+
+function formatKwhValue(val) {
+  const num = Number(val) || 0;
+  if (num <= 0) return '0.00';
+  if (num < 0.001) return num.toFixed(4);
+  if (num < 0.1) return num.toFixed(3);
+  return num.toFixed(2);
+}
+
 function getWeekDays(d) {
   const date = new Date(d);
   const day = date.getDay();
@@ -340,6 +353,42 @@ function updateChannelDisplay(prefix, channelData) {
   }
 }
 
+function refreshDashboardSummaryStats(todayKwh) {
+  const now = new Date();
+  const currentMonthStr = formatMonthForInput(now);
+  const weekDays = getWeekDays(now);
+
+  database.ref(`daily/${currentMonthStr}`).once('value').then(monthSnap => {
+    const monthData = monthSnap.val() || {};
+
+    let weekSum = todayKwh;
+    weekDays.forEach(d => {
+      if (!isSameDay(d, now)) {
+        const mStr = formatMonthForInput(d);
+        const dayStr = String(d.getDate()).padStart(2, '0');
+        if (mStr === currentMonthStr && monthData[dayStr]) {
+          weekSum += Number(monthData[dayStr].energy_kwh || 0);
+        }
+      }
+    });
+
+    let monthSum = todayKwh;
+    Object.entries(monthData).forEach(([dayStr, dVal]) => {
+      if (parseInt(dayStr, 10) !== now.getDate() && dVal && typeof dVal === 'object') {
+        monthSum += Number(dVal.energy_kwh || 0);
+      }
+    });
+
+    const weekElem = document.getElementById('statWeek');
+    const monthElem = document.getElementById('statMonth');
+    const alltimeElem = document.getElementById('statAllTime');
+
+    if (weekElem) weekElem.textContent = formatKwhValue(weekSum);
+    if (monthElem) monthElem.textContent = formatKwhValue(monthSum);
+    if (alltimeElem) alltimeElem.textContent = formatKwhValue(monthSum);
+  });
+}
+
 function updateStats(data) {
   if (!data) return;
   const today = Number(data.today_kwh || 0);
@@ -352,20 +401,32 @@ function updateStats(data) {
   const monthElem = document.getElementById('statMonth');
   const alltimeElem = document.getElementById('statAllTime');
 
-  if (todayElem) todayElem.textContent = today < 0.1 && today > 0 ? today.toFixed(3) : today.toFixed(1);
-  if (weekElem) weekElem.textContent = week.toFixed(1);
-  if (monthElem) monthElem.textContent = month.toFixed(1);
-  if (alltimeElem) alltimeElem.textContent = alltime.toFixed(1);
+  if (todayElem) todayElem.textContent = formatKwhValue(today);
+
+  if (data.week_kwh !== undefined && Number(data.week_kwh) > 0) {
+    if (weekElem) weekElem.textContent = formatKwhValue(week);
+    if (monthElem) monthElem.textContent = formatKwhValue(month);
+    if (alltimeElem) alltimeElem.textContent = formatKwhValue(alltime);
+  } else {
+    refreshDashboardSummaryStats(today);
+  }
 }
 
 function loadDailyData() {
-  const dateStr = formatDateForInput(state.currentDate); // YYYY-MM-DD
-  
-  database.ref(`hourly/${dateStr}`).once('value').then((snapshot) => {
-    const data = snapshot.val();
-    window.charts.updateDailyChart(data);
-    
-    // Calculate totals
+  const dateStr = formatDateForInput(state.currentDate);
+  const isToday = isSameDay(state.currentDate, new Date());
+
+  const promises = [
+    database.ref(`hourly/${dateStr}`).once('value')
+  ];
+  if (isToday) {
+    promises.push(database.ref('stats').once('value'));
+  }
+
+  Promise.all(promises).then(([hourlySnap, statsSnap]) => {
+    const data = hourlySnap.val() || {};
+    const statsData = statsSnap ? (statsSnap.val() || {}) : {};
+
     let totalWh = 0;
     let peakW = 0;
     let consumedWh = 0;
@@ -373,26 +434,49 @@ function loadDailyData() {
     let loadWh = 0;
     let invWh = 0;
 
-    if (data && typeof data === 'object') {
-      Object.values(data).forEach(hour => {
-        if (hour && typeof hour === 'object') {
-          totalWh += Number(hour.energy_wh || 0);
-          if (Number(hour.peak_w || 0) > peakW) peakW = Number(hour.peak_w);
+    Object.values(data).forEach(hour => {
+      if (hour && typeof hour === 'object') {
+        totalWh += Number(hour.energy_wh || 0);
+        if (Number(hour.peak_w || 0) > peakW) peakW = Number(hour.peak_w);
 
-          const c = Number(hour.consumed_wh !== undefined ? hour.consumed_wh : (
-            (Number(hour.battery_discharged_wh || 0)) + (Number(hour.load_wh || 0)) + (Number(hour.inverter_wh || 0))
-          ));
-          consumedWh += c;
-          battDischargedWh += Number(hour.battery_discharged_wh || 0);
-          loadWh += Number(hour.load_wh || 0);
-          invWh += Number(hour.inverter_wh || 0);
-        }
-      });
+        const c = Number(hour.consumed_wh !== undefined ? hour.consumed_wh : (
+          (Number(hour.battery_discharged_wh || 0)) + (Number(hour.load_wh || 0)) + (Number(hour.inverter_wh || 0))
+        ));
+        consumedWh += c;
+        battDischargedWh += Number(hour.battery_discharged_wh || 0);
+        loadWh += Number(hour.load_wh || 0);
+        invWh += Number(hour.inverter_wh || 0);
+      }
+    });
+
+    if (isToday) {
+      const todayTotalWh = Number(statsData.today_kwh || 0) * 1000;
+      const curHour = new Date().getHours();
+
+      if (todayTotalWh > totalWh) {
+        const runningHourWh = todayTotalWh - totalWh;
+        data[curHour] = data[curHour] || {};
+        data[curHour].energy_wh = Number(((data[curHour].energy_wh || 0) + runningHourWh).toFixed(2));
+        totalWh = todayTotalWh;
+      }
+
+      const todayConsWh = Number(statsData.today_consumed_kwh || 0) * 1000;
+      if (todayConsWh > consumedWh) consumedWh = todayConsWh;
+
+      const todayBattWh = Number(statsData.today_battery_discharged_kwh || 0) * 1000;
+      if (todayBattWh > battDischargedWh) battDischargedWh = todayBattWh;
+
+      const todayLoadWh = Number(statsData.today_load_kwh || 0) * 1000;
+      if (todayLoadWh > loadWh) loadWh = todayLoadWh;
+
+      const todayInvWh = Number(statsData.today_inverter_kwh || 0) * 1000;
+      if (todayInvWh > invWh) invWh = todayInvWh;
     }
-    
+
+    window.charts.updateDailyChart(data);
+
     const kwh = totalWh / 1000;
-    const formattedKwh = kwh > 0 && kwh < 0.01 ? kwh.toFixed(3) : kwh.toFixed(2);
-    document.getElementById('dailyTotal').innerHTML = `${formattedKwh} <small>kWh</small>`;
+    document.getElementById('dailyTotal').innerHTML = `${formatKwhValue(kwh)} <small>kWh</small>`;
     document.getElementById('dailyPeak').innerHTML = `${peakW} <small>W</small>`;
 
     const cTotal = document.getElementById('dailyConsumedTotal');
@@ -400,26 +484,60 @@ function loadDailyData() {
     const cLoad = document.getElementById('dailyLoadTotal');
     const cInv = document.getElementById('dailyInverterTotal');
 
-    if (cTotal) cTotal.textContent = `${(consumedWh / 1000).toFixed(2)} kWh`;
-    if (cBatt) cBatt.innerHTML = `${(battDischargedWh / 1000).toFixed(2)} <small>kWh</small>`;
-    if (cLoad) cLoad.innerHTML = `${(loadWh / 1000).toFixed(2)} <small>kWh</small>`;
-    if (cInv) cInv.innerHTML = `${(invWh / 1000).toFixed(2)} <small>kWh</small>`;
+    if (cTotal) cTotal.textContent = `${formatKwhValue(consumedWh / 1000)} kWh`;
+    if (cBatt) cBatt.innerHTML = `${formatKwhValue(battDischargedWh / 1000)} <small>kWh</small>`;
+    if (cLoad) cLoad.innerHTML = `${formatKwhValue(loadWh / 1000)} <small>kWh</small>`;
+    if (cInv) cInv.innerHTML = `${formatKwhValue(invWh / 1000)} <small>kWh</small>`;
   });
 }
 
 function loadMonthlyData() {
-  const monthStr = formatMonthForInput(state.currentMonth); // YYYY-MM
-  
-  // Get days in month
+  const monthStr = formatMonthForInput(state.currentMonth);
+  const now = new Date();
+  const isCurrentMonth = monthStr === formatMonthForInput(now);
+
   const year = state.currentMonth.getFullYear();
   const month = state.currentMonth.getMonth() + 1;
   const daysInMonth = new Date(year, month, 0).getDate();
-  
-  database.ref(`daily/${monthStr}`).once('value').then((snapshot) => {
-    const data = snapshot.val();
+
+  const promises = [
+    database.ref(`daily/${monthStr}`).once('value')
+  ];
+  if (isCurrentMonth) {
+    promises.push(database.ref('stats').once('value'));
+  }
+
+  Promise.all(promises).then(([snapshot, statsSnap]) => {
+    const data = snapshot.val() || {};
+    const statsData = statsSnap ? (statsSnap.val() || {}) : {};
+
+    if (isCurrentMonth) {
+      const todayDayStr = String(now.getDate()).padStart(2, '0');
+      const liveKwh = Number(statsData.today_kwh || 0);
+      const liveConsKwh = Number(statsData.today_consumed_kwh || 0);
+      const liveBattKwh = Number(statsData.today_battery_discharged_kwh || 0);
+      const liveLoadKwh = Number(statsData.today_load_kwh || 0);
+      const liveInvKwh = Number(statsData.today_inverter_kwh || 0);
+
+      if (!data[todayDayStr] || typeof data[todayDayStr] !== 'object') {
+        data[todayDayStr] = {
+          energy_kwh: liveKwh,
+          consumed_kwh: liveConsKwh,
+          battery_discharged_kwh: liveBattKwh,
+          load_kwh: liveLoadKwh,
+          inverter_kwh: liveInvKwh
+        };
+      } else {
+        data[todayDayStr].energy_kwh = Math.max(Number(data[todayDayStr].energy_kwh || 0), liveKwh);
+        data[todayDayStr].consumed_kwh = Math.max(Number(data[todayDayStr].consumed_kwh || 0), liveConsKwh);
+        data[todayDayStr].battery_discharged_kwh = Math.max(Number(data[todayDayStr].battery_discharged_kwh || 0), liveBattKwh);
+        data[todayDayStr].load_kwh = Math.max(Number(data[todayDayStr].load_kwh || 0), liveLoadKwh);
+        data[todayDayStr].inverter_kwh = Math.max(Number(data[todayDayStr].inverter_kwh || 0), liveInvKwh);
+      }
+    }
+
     window.charts.updateMonthlyChart(data, daysInMonth);
-    
-    // Calculate totals
+
     let totalKwh = 0;
     let count = 0;
     let totalConsumedKwh = 0;
@@ -427,37 +545,36 @@ function loadMonthlyData() {
     let totalLoadKwh = 0;
     let totalInvKwh = 0;
 
-    if (data && typeof data === 'object') {
-      Object.values(data).forEach(day => {
-        if (day && typeof day === 'object') {
-          totalKwh += Number(day.energy_kwh || 0);
-          count++;
+    Object.values(data).forEach(day => {
+      if (day && typeof day === 'object') {
+        const k = Number(day.energy_kwh || 0);
+        totalKwh += k;
+        if (k > 0) count++;
 
-          const c = Number(day.consumed_kwh !== undefined ? day.consumed_kwh : (
-            (Number(day.battery_discharged_kwh || 0)) + (Number(day.load_kwh || 0)) + (Number(day.inverter_kwh || 0))
-          ));
-          totalConsumedKwh += c;
-          totalBattKwh += Number(day.battery_discharged_kwh || 0);
-          totalLoadKwh += Number(day.load_kwh || 0);
-          totalInvKwh += Number(day.inverter_kwh || 0);
-        }
-      });
-    }
-    
+        const c = Number(day.consumed_kwh !== undefined ? day.consumed_kwh : (
+          (Number(day.battery_discharged_kwh || 0)) + (Number(day.load_kwh || 0)) + (Number(day.inverter_kwh || 0))
+        ));
+        totalConsumedKwh += c;
+        totalBattKwh += Number(day.battery_discharged_kwh || 0);
+        totalLoadKwh += Number(day.load_kwh || 0);
+        totalInvKwh += Number(day.inverter_kwh || 0);
+      }
+    });
+
     const avg = count > 0 ? totalKwh / count : 0;
-    
-    document.getElementById('monthlyTotal').innerHTML = `${totalKwh.toFixed(1)} <small>kWh</small>`;
-    document.getElementById('monthlyAvg').innerHTML = `${avg.toFixed(2)} <small>kWh</small>`;
+
+    document.getElementById('monthlyTotal').innerHTML = `${formatKwhValue(totalKwh)} <small>kWh</small>`;
+    document.getElementById('monthlyAvg').innerHTML = `${formatKwhValue(avg)} <small>kWh</small>`;
 
     const cTotal = document.getElementById('monthlyConsumedTotal');
     const cBatt = document.getElementById('monthlyBatteryDischarged');
     const cLoad = document.getElementById('monthlyLoadTotal');
     const cInv = document.getElementById('monthlyInverterTotal');
 
-    if (cTotal) cTotal.textContent = `${totalConsumedKwh.toFixed(2)} kWh`;
-    if (cBatt) cBatt.innerHTML = `${totalBattKwh.toFixed(2)} <small>kWh</small>`;
-    if (cLoad) cLoad.innerHTML = `${totalLoadKwh.toFixed(2)} <small>kWh</small>`;
-    if (cInv) cInv.innerHTML = `${totalInvKwh.toFixed(2)} <small>kWh</small>`;
+    if (cTotal) cTotal.textContent = `${formatKwhValue(totalConsumedKwh)} kWh`;
+    if (cBatt) cBatt.innerHTML = `${formatKwhValue(totalBattKwh)} <small>kWh</small>`;
+    if (cLoad) cLoad.innerHTML = `${formatKwhValue(totalLoadKwh)} <small>kWh</small>`;
+    if (cInv) cInv.innerHTML = `${formatKwhValue(totalInvKwh)} <small>kWh</small>`;
   });
 }
 
@@ -466,13 +583,18 @@ function loadWeeklyData() {
   const weekDisplay = document.getElementById('weekDisplay');
   if (weekDisplay) weekDisplay.textContent = formatWeekRange(weekDays);
 
+  const now = new Date();
   const promises = weekDays.map(d => {
     const monthStr = formatMonthForInput(d);
     const dayStr = String(d.getDate()).padStart(2, '0');
     return database.ref(`daily/${monthStr}/${dayStr}`).once('value');
   });
+  promises.push(database.ref('stats').once('value'));
 
   Promise.all(promises).then(snapshots => {
+    const statsSnap = snapshots.pop();
+    const statsData = statsSnap ? (statsSnap.val() || {}) : {};
+
     let totalKwh = 0;
     let bestKwh = 0;
     let bestDayName = '--';
@@ -485,7 +607,33 @@ function loadWeeklyData() {
     const daysKwh = [];
 
     snapshots.forEach((snap, idx) => {
-      const val = snap.val();
+      let val = snap.val();
+      const isToday = isSameDay(weekDays[idx], now);
+
+      if (isToday) {
+        const liveKwh = Number(statsData.today_kwh || 0);
+        const liveConsKwh = Number(statsData.today_consumed_kwh || 0);
+        const liveBattKwh = Number(statsData.today_battery_discharged_kwh || 0);
+        const liveLoadKwh = Number(statsData.today_load_kwh || 0);
+        const liveInvKwh = Number(statsData.today_inverter_kwh || 0);
+
+        if (!val || typeof val !== 'object') {
+          val = {
+            energy_kwh: liveKwh,
+            consumed_kwh: liveConsKwh,
+            battery_discharged_kwh: liveBattKwh,
+            load_kwh: liveLoadKwh,
+            inverter_kwh: liveInvKwh
+          };
+        } else {
+          val.energy_kwh = Math.max(Number(val.energy_kwh || 0), liveKwh);
+          val.consumed_kwh = Math.max(Number(val.consumed_kwh || 0), liveConsKwh);
+          val.battery_discharged_kwh = Math.max(Number(val.battery_discharged_kwh || 0), liveBattKwh);
+          val.load_kwh = Math.max(Number(val.load_kwh || 0), liveLoadKwh);
+          val.inverter_kwh = Math.max(Number(val.inverter_kwh || 0), liveInvKwh);
+        }
+      }
+
       const kwh = (val && typeof val === 'object') ? Number(val.energy_kwh || 0) : 0;
       daysKwh.push(kwh);
       totalKwh += kwh;
@@ -513,19 +661,19 @@ function loadWeeklyData() {
     const avgElem = document.getElementById('weeklyAvg');
     const peakElem = document.getElementById('weeklyPeakDay');
 
-    if (totalElem) totalElem.innerHTML = `${totalKwh.toFixed(2)} <small>kWh</small>`;
-    if (avgElem) avgElem.innerHTML = `${avgKwh.toFixed(2)} <small>kWh</small>`;
-    if (peakElem) peakElem.innerHTML = bestKwh > 0 ? `${bestDayName} (${bestKwh.toFixed(1)}k)` : '--';
+    if (totalElem) totalElem.innerHTML = `${formatKwhValue(totalKwh)} <small>kWh</small>`;
+    if (avgElem) avgElem.innerHTML = `${formatKwhValue(avgKwh)} <small>kWh</small>`;
+    if (peakElem) peakElem.innerHTML = bestKwh > 0 ? `${bestDayName} (${formatKwhValue(bestKwh)}k)` : '--';
 
     const cTotal = document.getElementById('weeklyConsumedTotal');
     const cBatt = document.getElementById('weeklyBatteryDischarged');
     const cLoad = document.getElementById('weeklyLoadTotal');
     const cInv = document.getElementById('weeklyInverterTotal');
 
-    if (cTotal) cTotal.textContent = `${totalConsumedKwh.toFixed(2)} kWh`;
-    if (cBatt) cBatt.innerHTML = `${totalBattKwh.toFixed(2)} <small>kWh</small>`;
-    if (cLoad) cLoad.innerHTML = `${totalLoadKwh.toFixed(2)} <small>kWh</small>`;
-    if (cInv) cInv.innerHTML = `${totalInvKwh.toFixed(2)} <small>kWh</small>`;
+    if (cTotal) cTotal.textContent = `${formatKwhValue(totalConsumedKwh)} kWh`;
+    if (cBatt) cBatt.innerHTML = `${formatKwhValue(totalBattKwh)} <small>kWh</small>`;
+    if (cLoad) cLoad.innerHTML = `${formatKwhValue(totalLoadKwh)} <small>kWh</small>`;
+    if (cInv) cInv.innerHTML = `${formatKwhValue(totalInvKwh)} <small>kWh</small>`;
   });
 }
 
@@ -534,13 +682,23 @@ function loadYearlyData() {
   const yearDisplay = document.getElementById('yearDisplay');
   if (yearDisplay) yearDisplay.textContent = String(year);
 
+  const now = new Date();
+  const isCurrentYear = year === now.getFullYear();
+  const currentMonthNum = now.getMonth() + 1;
+
   const monthPromises = [];
   for (let m = 1; m <= 12; m++) {
     const monthStr = `${year}-${String(m).padStart(2, '0')}`;
     monthPromises.push(database.ref(`daily/${monthStr}`).once('value'));
   }
+  if (isCurrentYear) {
+    monthPromises.push(database.ref('stats').once('value'));
+  }
 
   Promise.all(monthPromises).then(snapshots => {
+    const statsSnap = isCurrentYear ? snapshots.pop() : null;
+    const statsData = statsSnap ? (statsSnap.val() || {}) : {};
+
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const monthsKwh = [];
     let yearTotalKwh = 0;
@@ -553,26 +711,53 @@ function loadYearlyData() {
     let totalInvKwh = 0;
 
     snapshots.forEach((snap, idx) => {
-      const daysData = snap.val();
-      let monthSum = 0;
-      if (daysData && typeof daysData === 'object') {
-        Object.values(daysData).forEach(day => {
-          if (day && typeof day === 'object') {
-            const kwh = Number(day.energy_kwh || 0);
-            monthSum += kwh;
+      const daysData = snap.val() || {};
+      const monthNum = idx + 1;
+      const isCurMonth = isCurrentYear && (monthNum === currentMonthNum);
 
-            const c = Number(day.consumed_kwh !== undefined ? day.consumed_kwh : (
-              (Number(day.battery_discharged_kwh || 0)) + (Number(day.load_kwh || 0)) + (Number(day.inverter_kwh || 0))
-            ));
-            totalConsumedKwh += c;
-            totalBattKwh += Number(day.battery_discharged_kwh || 0);
-            totalLoadKwh += Number(day.load_kwh || 0);
-            totalInvKwh += Number(day.inverter_kwh || 0);
-          }
-        });
-        if (monthSum > 0) activeMonths++;
+      if (isCurMonth) {
+        const todayDayStr = String(now.getDate()).padStart(2, '0');
+        const liveKwh = Number(statsData.today_kwh || 0);
+        const liveConsKwh = Number(statsData.today_consumed_kwh || 0);
+        const liveBattKwh = Number(statsData.today_battery_discharged_kwh || 0);
+        const liveLoadKwh = Number(statsData.today_load_kwh || 0);
+        const liveInvKwh = Number(statsData.today_inverter_kwh || 0);
+
+        if (!daysData[todayDayStr] || typeof daysData[todayDayStr] !== 'object') {
+          daysData[todayDayStr] = {
+            energy_kwh: liveKwh,
+            consumed_kwh: liveConsKwh,
+            battery_discharged_kwh: liveBattKwh,
+            load_kwh: liveLoadKwh,
+            inverter_kwh: liveInvKwh
+          };
+        } else {
+          daysData[todayDayStr].energy_kwh = Math.max(Number(daysData[todayDayStr].energy_kwh || 0), liveKwh);
+          daysData[todayDayStr].consumed_kwh = Math.max(Number(daysData[todayDayStr].consumed_kwh || 0), liveConsKwh);
+          daysData[todayDayStr].battery_discharged_kwh = Math.max(Number(daysData[todayDayStr].battery_discharged_kwh || 0), liveBattKwh);
+          daysData[todayDayStr].load_kwh = Math.max(Number(daysData[todayDayStr].load_kwh || 0), liveLoadKwh);
+          daysData[todayDayStr].inverter_kwh = Math.max(Number(daysData[todayDayStr].inverter_kwh || 0), liveInvKwh);
+        }
       }
-      monthsKwh.push(parseFloat(monthSum.toFixed(1)));
+
+      let monthSum = 0;
+      Object.values(daysData).forEach(day => {
+        if (day && typeof day === 'object') {
+          const kwh = Number(day.energy_kwh || 0);
+          monthSum += kwh;
+
+          const c = Number(day.consumed_kwh !== undefined ? day.consumed_kwh : (
+            (Number(day.battery_discharged_kwh || 0)) + (Number(day.load_kwh || 0)) + (Number(day.inverter_kwh || 0))
+          ));
+          totalConsumedKwh += c;
+          totalBattKwh += Number(day.battery_discharged_kwh || 0);
+          totalLoadKwh += Number(day.load_kwh || 0);
+          totalInvKwh += Number(day.inverter_kwh || 0);
+        }
+      });
+
+      if (monthSum > 0) activeMonths++;
+      monthsKwh.push(parseFloat(monthSum.toFixed(2)));
       yearTotalKwh += monthSum;
 
       if (monthSum > peakMonthKwh) {
@@ -589,19 +774,19 @@ function loadYearlyData() {
     const avgElem = document.getElementById('yearlyAvg');
     const peakElem = document.getElementById('yearlyPeakMonth');
 
-    if (totalElem) totalElem.innerHTML = `${yearTotalKwh.toFixed(1)} <small>kWh</small>`;
-    if (avgElem) avgElem.innerHTML = `${avgMonthKwh.toFixed(1)} <small>kWh</small>`;
-    if (peakElem) peakElem.innerHTML = peakMonthKwh > 0 ? `${peakMonthName} (${peakMonthKwh.toFixed(0)}k)` : '--';
+    if (totalElem) totalElem.innerHTML = `${formatKwhValue(yearTotalKwh)} <small>kWh</small>`;
+    if (avgElem) avgElem.innerHTML = `${formatKwhValue(avgMonthKwh)} <small>kWh</small>`;
+    if (peakElem) peakElem.innerHTML = peakMonthKwh > 0 ? `${peakMonthName} (${formatKwhValue(peakMonthKwh)}k)` : '--';
 
     const cTotal = document.getElementById('yearlyConsumedTotal');
     const cBatt = document.getElementById('yearlyBatteryDischarged');
     const cLoad = document.getElementById('yearlyLoadTotal');
     const cInv = document.getElementById('yearlyInverterTotal');
 
-    if (cTotal) cTotal.textContent = `${totalConsumedKwh.toFixed(2)} kWh`;
-    if (cBatt) cBatt.innerHTML = `${totalBattKwh.toFixed(2)} <small>kWh</small>`;
-    if (cLoad) cLoad.innerHTML = `${totalLoadKwh.toFixed(2)} <small>kWh</small>`;
-    if (cInv) cInv.innerHTML = `${totalInvKwh.toFixed(2)} <small>kWh</small>`;
+    if (cTotal) cTotal.textContent = `${formatKwhValue(totalConsumedKwh)} kWh`;
+    if (cBatt) cBatt.innerHTML = `${formatKwhValue(totalBattKwh)} <small>kWh</small>`;
+    if (cLoad) cLoad.innerHTML = `${formatKwhValue(totalLoadKwh)} <small>kWh</small>`;
+    if (cInv) cInv.innerHTML = `${formatKwhValue(totalInvKwh)} <small>kWh</small>`;
   });
 }
 
