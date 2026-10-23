@@ -7,8 +7,42 @@ document.addEventListener('DOMContentLoaded', () => {
 // App State
 const state = {
   currentDate: new Date(),
-  currentMonth: new Date()
+  currentWeek: new Date(),
+  currentMonth: new Date(),
+  currentYear: new Date().getFullYear()
 };
+
+function switchView(targetId) {
+  // Update active bottom nav
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.getAttribute('data-target') === targetId);
+  });
+
+  // Update active period pills across views
+  document.querySelectorAll('.period-pill').forEach(p => {
+    p.classList.toggle('active', p.getAttribute('data-target') === targetId);
+  });
+
+  // Show corresponding view
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const targetView = document.getElementById(targetId);
+  if (targetView) targetView.classList.add('active');
+
+  // Trigger resize on charts to fix rendering issues when tab was hidden
+  window.dispatchEvent(new Event('resize'));
+
+  if (targetId === 'view-daily') {
+    loadDailyData();
+  } else if (targetId === 'view-weekly') {
+    loadWeeklyData();
+  } else if (targetId === 'view-monthly') {
+    loadMonthlyData();
+  } else if (targetId === 'view-yearly') {
+    loadYearlyData();
+  } else if (targetId === 'view-settings') {
+    checkHotspotConnection();
+  }
+}
 
 function initApp() {
   // Register Service Worker
@@ -18,33 +52,18 @@ function initApp() {
       .catch(err => console.error('SW registration failed', err));
   }
 
-  // Setup Navigation
-  const navItems = document.querySelectorAll('.nav-item');
-  const views = document.querySelectorAll('.view');
-  
-  navItems.forEach(item => {
+  // Setup Navigation listeners (Bottom Nav and Period Switcher Pills)
+  document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
-      
-      // Update active nav
-      navItems.forEach(n => n.classList.remove('active'));
-      item.classList.add('active');
-      
-      // Show corresponding view
-      const targetId = item.getAttribute('data-target');
-      views.forEach(v => v.classList.remove('active'));
-      document.getElementById(targetId).classList.add('active');
-      
-      // Trigger resize on charts to fix rendering issues when tab was hidden
-      if (targetId === 'view-daily') {
-        window.dispatchEvent(new Event('resize'));
-        loadDailyData();
-      } else if (targetId === 'view-monthly') {
-        window.dispatchEvent(new Event('resize'));
-        loadMonthlyData();
-      } else if (targetId === 'view-settings') {
-        checkHotspotConnection();
-      }
+      switchView(item.getAttribute('data-target'));
+    });
+  });
+
+  document.querySelectorAll('.period-pill').forEach(pill => {
+    pill.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchView(pill.getAttribute('data-target'));
     });
   });
 
@@ -52,8 +71,14 @@ function initApp() {
   const dailyCanvas = document.getElementById('dailyChart');
   if (dailyCanvas) window.charts.initDailyChart(dailyCanvas);
   
+  const weeklyCanvas = document.getElementById('weeklyChart');
+  if (weeklyCanvas) window.charts.initWeeklyChart(weeklyCanvas);
+
   const monthlyCanvas = document.getElementById('monthlyChart');
   if (monthlyCanvas) window.charts.initMonthlyChart(monthlyCanvas);
+
+  const yearlyCanvas = document.getElementById('yearlyChart');
+  if (yearlyCanvas) window.charts.initYearlyChart(yearlyCanvas);
 
   // Setup Date Pickers
   setupDatePickers();
@@ -81,46 +106,118 @@ function formatMonthForInput(date) {
   return `${yyyy}-${mm}`;
 }
 
-function setupDatePickers() {
-  const datePicker = document.getElementById('datePicker');
-  datePicker.value = formatDateForInput(state.currentDate);
-  
-  datePicker.addEventListener('change', (e) => {
-    state.currentDate = new Date(e.target.value);
-    loadDailyData();
-  });
-  
-  document.getElementById('prevDayBtn').addEventListener('click', () => {
-    state.currentDate.setDate(state.currentDate.getDate() - 1);
-    datePicker.value = formatDateForInput(state.currentDate);
-    loadDailyData();
-  });
-  
-  document.getElementById('nextDayBtn').addEventListener('click', () => {
-    state.currentDate.setDate(state.currentDate.getDate() + 1);
-    datePicker.value = formatDateForInput(state.currentDate);
-    loadDailyData();
-  });
+function getWeekDays(d) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = (day === 0 ? -6 : 1) - day; // Adjust to Monday
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + diff);
 
+  const week = [];
+  for (let i = 0; i < 7; i++) {
+    const nextDay = new Date(monday);
+    nextDay.setDate(monday.getDate() + i);
+    week.push(nextDay);
+  }
+  return week;
+}
+
+function formatWeekRange(weekDays) {
+  const start = weekDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const end = weekDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${start} - ${end}`;
+}
+
+function setupDatePickers() {
+  // Daily Picker
+  const datePicker = document.getElementById('datePicker');
+  if (datePicker) {
+    datePicker.value = formatDateForInput(state.currentDate);
+    datePicker.addEventListener('change', (e) => {
+      state.currentDate = new Date(e.target.value);
+      loadDailyData();
+    });
+  }
+  
+  const prevDayBtn = document.getElementById('prevDayBtn');
+  if (prevDayBtn) {
+    prevDayBtn.addEventListener('click', () => {
+      state.currentDate.setDate(state.currentDate.getDate() - 1);
+      if (datePicker) datePicker.value = formatDateForInput(state.currentDate);
+      loadDailyData();
+    });
+  }
+  
+  const nextDayBtn = document.getElementById('nextDayBtn');
+  if (nextDayBtn) {
+    nextDayBtn.addEventListener('click', () => {
+      state.currentDate.setDate(state.currentDate.getDate() + 1);
+      if (datePicker) datePicker.value = formatDateForInput(state.currentDate);
+      loadDailyData();
+    });
+  }
+
+  // Weekly Picker
+  const prevWeekBtn = document.getElementById('prevWeekBtn');
+  if (prevWeekBtn) {
+    prevWeekBtn.addEventListener('click', () => {
+      state.currentWeek.setDate(state.currentWeek.getDate() - 7);
+      loadWeeklyData();
+    });
+  }
+
+  const nextWeekBtn = document.getElementById('nextWeekBtn');
+  if (nextWeekBtn) {
+    nextWeekBtn.addEventListener('click', () => {
+      state.currentWeek.setDate(state.currentWeek.getDate() + 7);
+      loadWeeklyData();
+    });
+  }
+
+  // Monthly Picker
   const monthPicker = document.getElementById('monthPicker');
-  monthPicker.value = formatMonthForInput(state.currentMonth);
-  
-  monthPicker.addEventListener('change', (e) => {
-    state.currentMonth = new Date(e.target.value + '-01');
-    loadMonthlyData();
-  });
-  
-  document.getElementById('prevMonthBtn').addEventListener('click', () => {
-    state.currentMonth.setMonth(state.currentMonth.getMonth() - 1);
+  if (monthPicker) {
     monthPicker.value = formatMonthForInput(state.currentMonth);
-    loadMonthlyData();
-  });
+    monthPicker.addEventListener('change', (e) => {
+      state.currentMonth = new Date(e.target.value + '-01');
+      loadMonthlyData();
+    });
+  }
   
-  document.getElementById('nextMonthBtn').addEventListener('click', () => {
-    state.currentMonth.setMonth(state.currentMonth.getMonth() + 1);
-    monthPicker.value = formatMonthForInput(state.currentMonth);
-    loadMonthlyData();
-  });
+  const prevMonthBtn = document.getElementById('prevMonthBtn');
+  if (prevMonthBtn) {
+    prevMonthBtn.addEventListener('click', () => {
+      state.currentMonth.setMonth(state.currentMonth.getMonth() - 1);
+      if (monthPicker) monthPicker.value = formatMonthForInput(state.currentMonth);
+      loadMonthlyData();
+    });
+  }
+  
+  const nextMonthBtn = document.getElementById('nextMonthBtn');
+  if (nextMonthBtn) {
+    nextMonthBtn.addEventListener('click', () => {
+      state.currentMonth.setMonth(state.currentMonth.getMonth() + 1);
+      if (monthPicker) monthPicker.value = formatMonthForInput(state.currentMonth);
+      loadMonthlyData();
+    });
+  }
+
+  // Yearly Picker
+  const prevYearBtn = document.getElementById('prevYearBtn');
+  if (prevYearBtn) {
+    prevYearBtn.addEventListener('click', () => {
+      state.currentYear--;
+      loadYearlyData();
+    });
+  }
+
+  const nextYearBtn = document.getElementById('nextYearBtn');
+  if (nextYearBtn) {
+    nextYearBtn.addEventListener('click', () => {
+      state.currentYear++;
+      loadYearlyData();
+    });
+  }
 }
 
 function animateValue(obj, start, end, duration, decimals = 1) {
@@ -287,6 +384,100 @@ function loadMonthlyData() {
   });
 }
 
+function loadWeeklyData() {
+  const weekDays = getWeekDays(state.currentWeek);
+  const weekDisplay = document.getElementById('weekDisplay');
+  if (weekDisplay) weekDisplay.textContent = formatWeekRange(weekDays);
+
+  const promises = weekDays.map(d => {
+    const monthStr = formatMonthForInput(d);
+    const dayStr = String(d.getDate()).padStart(2, '0');
+    return database.ref(`daily/${monthStr}/${dayStr}`).once('value');
+  });
+
+  Promise.all(promises).then(snapshots => {
+    let totalKwh = 0;
+    let bestKwh = 0;
+    let bestDayName = '--';
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const daysKwh = [];
+
+    snapshots.forEach((snap, idx) => {
+      const val = snap.val();
+      const kwh = val ? Number(val.energy_kwh || 0) : 0;
+      daysKwh.push(kwh);
+      totalKwh += kwh;
+      if (kwh > bestKwh) {
+        bestKwh = kwh;
+        bestDayName = dayNames[idx];
+      }
+    });
+
+    const avgKwh = totalKwh / 7;
+
+    window.charts.updateWeeklyChart(daysKwh, dayNames);
+
+    const totalElem = document.getElementById('weeklyTotal');
+    const avgElem = document.getElementById('weeklyAvg');
+    const peakElem = document.getElementById('weeklyPeakDay');
+
+    if (totalElem) totalElem.innerHTML = `${totalKwh.toFixed(2)} <small>kWh</small>`;
+    if (avgElem) avgElem.innerHTML = `${avgKwh.toFixed(2)} <small>kWh</small>`;
+    if (peakElem) peakElem.innerHTML = bestKwh > 0 ? `${bestDayName} (${bestKwh.toFixed(1)}k)` : '--';
+  });
+}
+
+function loadYearlyData() {
+  const year = state.currentYear;
+  const yearDisplay = document.getElementById('yearDisplay');
+  if (yearDisplay) yearDisplay.textContent = String(year);
+
+  const monthPromises = [];
+  for (let m = 1; m <= 12; m++) {
+    const monthStr = `${year}-${String(m).padStart(2, '0')}`;
+    monthPromises.push(database.ref(`daily/${monthStr}`).once('value'));
+  }
+
+  Promise.all(monthPromises).then(snapshots => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthsKwh = [];
+    let yearTotalKwh = 0;
+    let peakMonthKwh = 0;
+    let peakMonthName = '--';
+    let activeMonths = 0;
+
+    snapshots.forEach((snap, idx) => {
+      const daysData = snap.val();
+      let monthSum = 0;
+      if (daysData) {
+        Object.values(daysData).forEach(day => {
+          monthSum += Number(day.energy_kwh || 0);
+        });
+        if (monthSum > 0) activeMonths++;
+      }
+      monthsKwh.push(parseFloat(monthSum.toFixed(1)));
+      yearTotalKwh += monthSum;
+
+      if (monthSum > peakMonthKwh) {
+        peakMonthKwh = monthSum;
+        peakMonthName = monthNames[idx];
+      }
+    });
+
+    const avgMonthKwh = activeMonths > 0 ? (yearTotalKwh / activeMonths) : 0;
+
+    window.charts.updateYearlyChart(monthsKwh);
+
+    const totalElem = document.getElementById('yearlyTotal');
+    const avgElem = document.getElementById('yearlyAvg');
+    const peakElem = document.getElementById('yearlyPeakMonth');
+
+    if (totalElem) totalElem.innerHTML = `${yearTotalKwh.toFixed(1)} <small>kWh</small>`;
+    if (avgElem) avgElem.innerHTML = `${avgMonthKwh.toFixed(1)} <small>kWh</small>`;
+    if (peakElem) peakElem.innerHTML = peakMonthKwh > 0 ? `${peakMonthName} (${peakMonthKwh.toFixed(0)}k)` : '--';
+  });
+}
+
 // ---------------- DEMO DATA GENERATOR ----------------
 
 async function loadDemoData() {
@@ -299,10 +490,11 @@ async function loadDemoData() {
     const updates = {};
     
     let monthTotal = 0;
+    let weekTotal = 0;
     let allTimeTotal = 1200.5;
 
-    // Generate 30 days of data
-    for (let i = 29; i >= 0; i--) {
+    // Generate 365 days of data covering the past year
+    for (let i = 364; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       
@@ -310,26 +502,20 @@ async function loadDemoData() {
       const monthStr = formatMonthForInput(d);
       const dayStr = String(d.getDate()).padStart(2, '0');
       
-      // Simulate bell curve for day (peak at noon)
       let dailyTotalWh = 0;
       let dailyPeakW = 0;
       const hourlyData = {};
       
-      // Random cloud cover factor for the day (0.5 to 1.2)
       const weatherFactor = 0.5 + (Math.random() * 0.7);
 
       for (let h = 0; h < 24; h++) {
         let energyWh = 0;
         let peakW = 0;
         
-        // Sun is up roughly 6am to 6pm
         if (h >= 6 && h <= 18) {
-          // Parabola peaking at hour 12
           const distance = Math.abs(12 - h);
-          const maxPower = 1000 * weatherFactor; // Up to ~1000W
+          const maxPower = 1000 * weatherFactor;
           const power = Math.max(0, maxPower * (1 - Math.pow(distance / 6, 2)));
-          
-          // Add some randomness per hour
           energyWh = Math.round(power * (0.8 + Math.random() * 0.4));
           peakW = Math.round(energyWh * 1.2);
         }
@@ -341,28 +527,27 @@ async function loadDemoData() {
       
       const dailyKwh = parseFloat((dailyTotalWh / 1000).toFixed(2));
       
-      // Set Hourly
-      updates[`hourly/${dateStr}`] = hourlyData;
+      if (i < 30) {
+        updates[`hourly/${dateStr}`] = hourlyData;
+      }
       
-      // Set Daily
       updates[`daily/${monthStr}/${dayStr}`] = {
         energy_kwh: dailyKwh,
         peak_w: dailyPeakW
       };
       
+      if (i < 7) weekTotal += dailyKwh;
       if (i < 30) monthTotal += dailyKwh;
       allTimeTotal += dailyKwh;
     }
 
-    // Set Stats
     updates['stats'] = {
       today_kwh: parseFloat((updates[`hourly/${formatDateForInput(today)}`] ? Object.values(updates[`hourly/${formatDateForInput(today)}`]).reduce((a,b)=>a+(b.energy_wh||0),0)/1000 : 0).toFixed(2)),
-      week_kwh: parseFloat((monthTotal * (7/30)).toFixed(2)), // rough est
+      week_kwh: parseFloat(weekTotal.toFixed(2)),
       month_kwh: parseFloat(monthTotal.toFixed(2)),
       alltime_kwh: parseFloat(allTimeTotal.toFixed(2))
     };
 
-    // Set Live (simulate current time)
     const currentHour = today.getHours();
     let currentPower = 0;
     if (currentHour >= 6 && currentHour <= 18) {
@@ -371,13 +556,28 @@ async function loadDemoData() {
     }
     
     updates['live'] = {
-      power: Math.round(currentPower * 10) / 10,
-      voltage: 24.5 + (Math.random() - 0.5),
-      current: currentPower > 0 ? (currentPower / 24.5) : 0,
-      timestamp: Date.now()
+      solar: {
+        watts: Math.round(currentPower * 10) / 10,
+        volts: parseFloat((18.5 + (Math.random() - 0.5)).toFixed(1)),
+        amps: currentPower > 0 ? parseFloat((currentPower / 18.5).toFixed(2)) : 0
+      },
+      battery: {
+        watts: Math.round(currentPower * 0.6 * 10) / 10,
+        volts: 12.6,
+        amps: parseFloat(((currentPower * 0.6) / 12.6).toFixed(2))
+      },
+      load: {
+        watts: 25.0,
+        volts: 12.2,
+        amps: 2.05
+      },
+      inverter: {
+        watts: 220.0,
+        volts: 230.0,
+        amps: 0.96
+      }
     };
 
-    // Write to Firebase
     await database.ref().update(updates);
     
     btn.innerHTML = '<i class="fas fa-check"></i> Data Loaded';
@@ -388,9 +588,10 @@ async function loadDemoData() {
       btn.disabled = false;
     }, 2000);
 
-    // Refresh charts
     loadDailyData();
+    loadWeeklyData();
     loadMonthlyData();
+    loadYearlyData();
     
   } catch (error) {
     console.error("Error loading demo data", error);

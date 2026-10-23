@@ -2,7 +2,9 @@
 
 // Global chart instances
 let dailyChartInstance = null;
+let weeklyChartInstance = null;
 let monthlyChartInstance = null;
+let yearlyChartInstance = null;
 
 // Chart defaults for dark theme
 Chart.defaults.color = '#94a3b8';
@@ -198,9 +200,124 @@ function updateMonthlyChart(dailyData, daysInMonth) {
   monthlyChartInstance.update();
 }
 
+function initWeeklyChart(ctx) {
+  const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 250);
+  gradient.addColorStop(0, '#FFB800');
+  gradient.addColorStop(1, '#FF6B35');
+
+  weeklyChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      datasets: [
+        {
+          type: 'line',
+          label: 'Trend',
+          data: [],
+          borderColor: '#FFD700',
+          borderWidth: 2,
+          tension: 0.4,
+          pointRadius: 0
+        },
+        {
+          type: 'bar',
+          label: 'Energy (kWh)',
+          data: [],
+          backgroundColor: gradient,
+          borderRadius: 4,
+          barPercentage: 0.6
+        }
+      ]
+    },
+    options: {
+      ...commonOptions,
+      plugins: {
+        ...commonOptions.plugins,
+        tooltip: {
+          ...commonOptions.plugins.tooltip,
+          callbacks: {
+            title: (items) => `${items[0].label}`,
+            label: (context) => {
+              if (context.dataset.type === 'line') return null;
+              return `${Number(context.raw).toFixed(2)} kWh`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function updateWeeklyChart(daysData, labels) {
+  if (!weeklyChartInstance) return;
+  weeklyChartInstance.data.labels = labels || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  weeklyChartInstance.data.datasets[0].data = daysData;
+  weeklyChartInstance.data.datasets[1].data = daysData;
+  weeklyChartInstance.update();
+}
+
+function initYearlyChart(ctx) {
+  const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 250);
+  gradient.addColorStop(0, '#FF6B35');
+  gradient.addColorStop(1, '#FFB800');
+
+  yearlyChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      datasets: [
+        {
+          type: 'line',
+          label: 'Trend',
+          data: [],
+          borderColor: '#FFD700',
+          borderWidth: 2,
+          tension: 0.4,
+          pointRadius: 0
+        },
+        {
+          type: 'bar',
+          label: 'Energy (kWh)',
+          data: [],
+          backgroundColor: gradient,
+          borderRadius: 4,
+          barPercentage: 0.65
+        }
+      ]
+    },
+    options: {
+      ...commonOptions,
+      plugins: {
+        ...commonOptions.plugins,
+        tooltip: {
+          ...commonOptions.plugins.tooltip,
+          callbacks: {
+            title: (items) => `${items[0].label}`,
+            label: (context) => {
+              if (context.dataset.type === 'line') return null;
+              return `${Number(context.raw).toFixed(1)} kWh`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function updateYearlyChart(monthsData) {
+  if (!yearlyChartInstance) return;
+  yearlyChartInstance.data.datasets[0].data = monthsData;
+  yearlyChartInstance.data.datasets[1].data = monthsData;
+  yearlyChartInstance.update();
+}
+
 window.charts = {
   initDailyChart,
   updateDailyChart,
+  initWeeklyChart,
+  updateWeeklyChart,
   initMonthlyChart,
-  updateMonthlyChart
+  updateMonthlyChart,
+  initYearlyChart,
+  updateYearlyChart
 };

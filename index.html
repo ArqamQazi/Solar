@@ -134,6 +134,14 @@
       <div class="header">
         <h1>Daily Production</h1>
       </div>
+
+      <div class="period-switcher glass">
+        <button class="period-pill active" data-target="view-daily">Daily</button>
+        <button class="period-pill" data-target="view-weekly">Weekly</button>
+        <button class="period-pill" data-target="view-monthly">Monthly</button>
+        <button class="period-pill" data-target="view-yearly">Yearly</button>
+      </div>
+
       <div class="controls-bar glass">
         <button class="icon-btn" id="prevDayBtn"><i class="fas fa-chevron-left"></i></button>
         <input type="date" id="datePicker" class="date-picker">
@@ -156,11 +164,58 @@
       </div>
     </section>
 
+    <!-- WEEKLY VIEW -->
+    <section id="view-weekly" class="view">
+      <div class="header">
+        <h1>Weekly Production</h1>
+      </div>
+
+      <div class="period-switcher glass">
+        <button class="period-pill" data-target="view-daily">Daily</button>
+        <button class="period-pill active" data-target="view-weekly">Weekly</button>
+        <button class="period-pill" data-target="view-monthly">Monthly</button>
+        <button class="period-pill" data-target="view-yearly">Yearly</button>
+      </div>
+
+      <div class="controls-bar glass">
+        <button class="icon-btn" id="prevWeekBtn"><i class="fas fa-chevron-left"></i></button>
+        <span id="weekDisplay" class="date-picker">This Week</span>
+        <button class="icon-btn" id="nextWeekBtn"><i class="fas fa-chevron-right"></i></button>
+      </div>
+      
+      <div class="card glass chart-card">
+        <canvas id="weeklyChart"></canvas>
+      </div>
+      
+      <div class="summary-cards">
+        <div class="summary-card glass">
+          <span class="label">Total Energy</span>
+          <span class="val" id="weeklyTotal">0.0 <small>kWh</small></span>
+        </div>
+        <div class="summary-card glass">
+          <span class="label">Daily Avg</span>
+          <span class="val" id="weeklyAvg">0.0 <small>kWh</small></span>
+        </div>
+        <div class="summary-card glass">
+          <span class="label">Best Day</span>
+          <span class="val" id="weeklyPeakDay">--</span>
+        </div>
+      </div>
+    </section>
+
     <!-- MONTHLY VIEW -->
     <section id="view-monthly" class="view">
       <div class="header">
         <h1>Monthly History</h1>
       </div>
+
+      <div class="period-switcher glass">
+        <button class="period-pill" data-target="view-daily">Daily</button>
+        <button class="period-pill" data-target="view-weekly">Weekly</button>
+        <button class="period-pill active" data-target="view-monthly">Monthly</button>
+        <button class="period-pill" data-target="view-yearly">Yearly</button>
+      </div>
+
       <div class="controls-bar glass">
         <button class="icon-btn" id="prevMonthBtn"><i class="fas fa-chevron-left"></i></button>
         <input type="month" id="monthPicker" class="date-picker">
@@ -179,6 +234,45 @@
         <div class="summary-card glass">
           <span class="label">Daily Avg</span>
           <span class="val" id="monthlyAvg">0.0 <small>kWh</small></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- YEARLY VIEW -->
+    <section id="view-yearly" class="view">
+      <div class="header">
+        <h1>Yearly Overview</h1>
+      </div>
+
+      <div class="period-switcher glass">
+        <button class="period-pill" data-target="view-daily">Daily</button>
+        <button class="period-pill" data-target="view-weekly">Weekly</button>
+        <button class="period-pill" data-target="view-monthly">Monthly</button>
+        <button class="period-pill active" data-target="view-yearly">Yearly</button>
+      </div>
+
+      <div class="controls-bar glass">
+        <button class="icon-btn" id="prevYearBtn"><i class="fas fa-chevron-left"></i></button>
+        <span id="yearDisplay" class="date-picker">2026</span>
+        <button class="icon-btn" id="nextYearBtn"><i class="fas fa-chevron-right"></i></button>
+      </div>
+      
+      <div class="card glass chart-card">
+        <canvas id="yearlyChart"></canvas>
+      </div>
+      
+      <div class="summary-cards">
+        <div class="summary-card glass">
+          <span class="label">Year Total</span>
+          <span class="val" id="yearlyTotal">0.0 <small>kWh</small></span>
+        </div>
+        <div class="summary-card glass">
+          <span class="label">Monthly Avg</span>
+          <span class="val" id="yearlyAvg">0.0 <small>kWh</small></span>
+        </div>
+        <div class="summary-card glass">
+          <span class="label">Peak Month</span>
+          <span class="val" id="yearlyPeakMonth">--</span>
         </div>
       </div>
     </section>
@@ -272,12 +366,20 @@
       <span>Home</span>
     </a>
     <a href="#" class="nav-item" data-target="view-daily">
-      <i class="fas fa-chart-bar"></i>
+      <i class="fas fa-clock"></i>
       <span>Daily</span>
+    </a>
+    <a href="#" class="nav-item" data-target="view-weekly">
+      <i class="fas fa-calendar-week"></i>
+      <span>Weekly</span>
     </a>
     <a href="#" class="nav-item" data-target="view-monthly">
       <i class="fas fa-calendar-alt"></i>
       <span>Monthly</span>
+    </a>
+    <a href="#" class="nav-item" data-target="view-yearly">
+      <i class="fas fa-chart-line"></i>
+      <span>Yearly</span>
     </a>
     <a href="#" class="nav-item" data-target="view-settings">
       <i class="fas fa-cog"></i>
