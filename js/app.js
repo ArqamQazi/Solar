@@ -403,6 +403,18 @@ function updateStats(data) {
 
   if (todayElem) todayElem.textContent = formatKwhValue(today);
 
+  const consElem = document.getElementById('dashConsumedToday');
+  const dashLoadElem = document.getElementById('dashLoadToday');
+  const dashBattElem = document.getElementById('dashBattToday');
+
+  const consKwh = Number(data.today_consumed_kwh || 0);
+  const loadKwh = Number(data.today_load_kwh || 0);
+  const battKwh = Number(data.today_battery_discharged_kwh || 0);
+
+  if (consElem) consElem.textContent = formatKwhValue(consKwh);
+  if (dashLoadElem) dashLoadElem.textContent = formatKwhValue(loadKwh);
+  if (dashBattElem) dashBattElem.textContent = formatKwhValue(battKwh);
+
   if (data.week_kwh !== undefined && Number(data.week_kwh) > 0) {
     if (weekElem) weekElem.textContent = formatKwhValue(week);
     if (monthElem) monthElem.textContent = formatKwhValue(month);

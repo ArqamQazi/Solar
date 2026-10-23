@@ -1,4 +1,4 @@
-const CACHE_NAME = 'solar-monitor-v13';
+const CACHE_NAME = 'solar-monitor-v14';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

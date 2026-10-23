@@ -133,6 +133,22 @@
           </div>
         </div>
       </div>
+
+      <div class="card glass home-consumed-box" style="margin-top: 12px; padding: 14px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="stat-icon" style="color: var(--accent-secondary);"><i class="fas fa-chart-pie"></i></div>
+            <div>
+              <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">Energy Consumed Today</div>
+              <div style="font-size: 18px; font-weight: 700; color: var(--text-primary);"><span id="dashConsumedToday">0.00</span> <small style="font-size: 12px; font-weight: normal; color: var(--text-secondary);">kWh</small></div>
+            </div>
+          </div>
+          <div style="font-size: 11px; color: var(--text-secondary); text-align: right; line-height: 1.4;">
+            <div>Load: <strong id="dashLoadToday">0.00</strong> kWh</div>
+            <div>Battery: <strong id="dashBattToday">0.00</strong> kWh</div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- DAILY VIEW -->
@@ -576,8 +592,8 @@
   </nav>
 
   <!-- App Scripts -->
-  <script src="js/firebase-config.js?v=13"></script>
-  <script src="js/charts.js?v=13"></script>
-  <script src="js/app.js?v=13"></script>
+  <script src="js/firebase-config.js?v=14"></script>
+  <script src="js/charts.js?v=14"></script>
+  <script src="js/app.js?v=14"></script>
 </body>
 </html>
