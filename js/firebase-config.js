@@ -1,14 +1,13 @@
 // js/firebase-config.js
-// TODO: Replace with your actual Firebase project configuration
-// You can get this from Firebase Console -> Project Settings -> General -> Web Apps
+
 const firebaseConfig = {
-  apiKey: "AIzaSyYOUR_API_KEY_HERE",
-  authDomain: "your-project-id.firebaseapp.com",
-  databaseURL: "https://your-project-id-default-rtdb.firebaseio.com",
-  projectId: "your-project-id",
-  storageBucket: "your-project-id.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef1234567890"
+  apiKey: "AIzaSyAj7TAfECOa134ykPeWhyEPcWcYi1RW_5s",
+  authDomain: "solar-telemetry.firebaseapp.com",
+  databaseURL: "https://solar-telemetry-default-rtdb.firebaseio.com",
+  projectId: "solar-telemetry",
+  storageBucket: "solar-telemetry.firebasestorage.app",
+  messagingSenderId: "662460055753",
+  appId: "1:662460055753:web:1ea5fb252acdec3f6f4d18"
 };
 
 // Initialize Firebase

@@ -552,6 +552,57 @@ html {
   color: var(--accent-primary);
 }
 
+/* 4-Channel Inverter Telemetry */
+.multi-channel-card {
+  margin-top: 14px;
+}
+
+.channel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.channel-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 12px;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.channel-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.channel-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.channel-header i {
+  color: var(--accent-primary);
+}
+
+.channel-power {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.channel-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
 /* Wi-Fi Configuration Card Components */
 .hotspot-status-box {
   display: flex;

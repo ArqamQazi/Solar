@@ -187,15 +187,21 @@ function updateLiveDashboard(data) {
   document.getElementById('lastUpdated').textContent = now.toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true});
   document.getElementById('lastSyncTime').textContent = now.toLocaleString('en-IN', {hour12: true});
 
-  const powerElem = document.getElementById('livePower');
-  animateValue(powerElem, lastPower, data.power, 500, 1);
-  lastPower = data.power;
+  // Support 4-channel payload (data.solar, data.battery, data.load, data.inverter) or legacy flat payload
+  const solar = (data && data.solar) ? data.solar : (data || {});
+  const power = Number(solar.watts !== undefined ? solar.watts : (solar.power || 0));
+  const voltage = Number(solar.volts !== undefined ? solar.volts : (solar.voltage || 0));
+  const current = Number(solar.amps !== undefined ? solar.amps : (solar.current || 0));
 
-  document.getElementById('liveVoltage').textContent = `${data.voltage.toFixed(1)} V`;
-  document.getElementById('liveCurrent').textContent = `${data.current.toFixed(1)} A`;
+  const powerElem = document.getElementById('livePower');
+  animateValue(powerElem, lastPower, power, 500, 1);
+  lastPower = power;
+
+  document.getElementById('liveVoltage').textContent = `${voltage.toFixed(1)} V`;
+  document.getElementById('liveCurrent').textContent = `${current.toFixed(1)} A`;
 
   const statusBadge = document.getElementById('systemStatus');
-  if (data.power > 10) {
+  if (power > 10) {
     statusBadge.innerHTML = '<i class="fas fa-sun"></i> Generating';
     statusBadge.style.color = 'var(--accent-primary)';
     statusBadge.style.background = 'rgba(255, 184, 0, 0.15)';
@@ -204,6 +210,23 @@ function updateLiveDashboard(data) {
     statusBadge.style.color = 'var(--text-secondary)';
     statusBadge.style.background = 'rgba(255, 255, 255, 0.1)';
   }
+
+  // Update multi-channel power stages
+  updateChannelDisplay('chSolar', solar);
+  if (data && data.battery) updateChannelDisplay('chBattery', data.battery);
+  if (data && data.load) updateChannelDisplay('chLoad', data.load);
+  if (data && data.inverter) updateChannelDisplay('chInverter', data.inverter);
+}
+
+function updateChannelDisplay(prefix, channelData) {
+  const wattsElem = document.getElementById(`${prefix}Watts`);
+  const subElem = document.getElementById(`${prefix}Sub`);
+  if (!channelData) return;
+  const w = Number(channelData.watts !== undefined ? channelData.watts : (channelData.power || 0));
+  const v = Number(channelData.volts !== undefined ? channelData.volts : (channelData.voltage || 0));
+  const a = Number(channelData.amps !== undefined ? channelData.amps : (channelData.current || 0));
+  if (wattsElem) wattsElem.textContent = `${w.toFixed(1)} W`;
+  if (subElem) subElem.textContent = `${v.toFixed(1)} V | ${a.toFixed(1)} A`;
 }
 
 function updateStats(data) {
