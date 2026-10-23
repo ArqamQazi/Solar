@@ -94,10 +94,13 @@ void loop() {
       int16_t rawShunt = readRegister(addresses[i], 0x01);
       float shuntVolts = rawShunt * 0.0000025;
       float amps = shuntVolts / shuntResistance;
-      if (abs(amps) < 0.40) amps = 0.00;
+      if (abs(amps) < 0.05) amps = 0.00;
 
       float watts = volts * abs(amps);
       if (sensorNames[i] == "solar") solarWatts = watts;
+
+      Serial.printf("[%s 0x%02X] rawShunt: %d, Volts: %.2fV, Amps: %.2fA, Watts: %.2fW\n", 
+                    sensorNames[i].c_str(), addresses[i], rawShunt, volts, amps, watts);
 
       jsonPayload += "\"" + sensorNames[i] + "\": {";
       jsonPayload += "\"volts\":" + String(volts, 2) + ",";
