@@ -353,21 +353,22 @@ function updateChannelDisplay(prefix, channelData) {
   }
 }
 
-function refreshDashboardSummaryStats(todayKwh) {
+function refreshDashboardSummaryStats(todayKwh, todayConsKwh) {
   const now = new Date();
   const currentMonthStr = formatMonthForInput(now);
   const weekDays = getWeekDays(now);
 
-  database.ref(`daily/${currentMonthStr}`).once('value').then(monthSnap => {
-    const monthData = monthSnap.val() || {};
+  database.ref('daily').once('value').then(snap => {
+    const allDailyData = snap.val() || {};
+    const monthData = allDailyData[currentMonthStr] || {};
 
     let weekSum = todayKwh;
     weekDays.forEach(d => {
       if (!isSameDay(d, now)) {
         const mStr = formatMonthForInput(d);
         const dayStr = String(d.getDate()).padStart(2, '0');
-        if (mStr === currentMonthStr && monthData[dayStr]) {
-          weekSum += Number(monthData[dayStr].energy_kwh || 0);
+        if (allDailyData[mStr] && allDailyData[mStr][dayStr]) {
+          weekSum += Number(allDailyData[mStr][dayStr].energy_kwh || 0);
         }
       }
     });
@@ -379,13 +380,32 @@ function refreshDashboardSummaryStats(todayKwh) {
       }
     });
 
+    let allTimeGenSum = todayKwh;
+    let allTimeConsumedSum = todayConsKwh;
+
+    Object.values(allDailyData).forEach(mObj => {
+      if (mObj && typeof mObj === 'object') {
+        Object.values(mObj).forEach(dVal => {
+          if (dVal && typeof dVal === 'object') {
+            allTimeGenSum += Number(dVal.energy_kwh || 0);
+            const c = Number(dVal.consumed_kwh !== undefined ? dVal.consumed_kwh : (
+              (Number(dVal.battery_discharged_kwh || 0)) + (Number(dVal.load_kwh || 0)) + (Number(dVal.inverter_wh || 0))
+            ));
+            allTimeConsumedSum += c;
+          }
+        });
+      }
+    });
+
     const weekElem = document.getElementById('statWeek');
     const monthElem = document.getElementById('statMonth');
     const alltimeElem = document.getElementById('statAllTime');
+    const alltimeConsElem = document.getElementById('dashConsumedAllTime');
 
     if (weekElem) weekElem.textContent = formatKwhValue(weekSum);
     if (monthElem) monthElem.textContent = formatKwhValue(monthSum);
-    if (alltimeElem) alltimeElem.textContent = formatKwhValue(monthSum);
+    if (alltimeElem) alltimeElem.textContent = formatKwhValue(allTimeGenSum);
+    if (alltimeConsElem) alltimeConsElem.textContent = formatKwhValue(allTimeConsumedSum);
   });
 }
 
@@ -420,7 +440,7 @@ function updateStats(data) {
     if (monthElem) monthElem.textContent = formatKwhValue(month);
     if (alltimeElem) alltimeElem.textContent = formatKwhValue(alltime);
   } else {
-    refreshDashboardSummaryStats(today);
+    refreshDashboardSummaryStats(today, consKwh);
   }
 }
 
