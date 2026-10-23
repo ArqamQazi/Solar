@@ -1,95 +1,268 @@
-# Solar Panel Monitoring Dashboard
+# Solar Monitor: Smart IoT Telemetry and Real-Time Dashboard
 
-A premium, production-quality dashboard and IoT solution for monitoring solar panel generation in real-time. Features a beautiful Dark Theme PWA (Progressive Web App) and an ESP32 hardware implementation.
+A production-ready monitoring system and installable Progressive Web Application (PWA) designed for portable solar inverters and off-grid power stations. The system pairs an ESP32 microcontroller and four INA226 power sensors with Google Firebase Realtime Database to deliver high-precision telemetry, multi-period generation analytics, intelligent battery state of charge monitoring, and zero-touch Wi-Fi configuration.
 
-## Architecture Diagram
+Live Application: https://arqamqazi.github.io/Solar/
 
-```text
-  [Solar Panel] 
-       │
-       ▼
- [INA219 Sensor] ◄─── (I2C) ───► [ESP32 Microcontroller]
-                                        │
-                                        ▼ (WiFi / HTTPS)
-                                        │
-                              [Firebase Realtime Database]
-                                        │
-                                        ▼ (WebSockets / onValue)
-                                        │
-                             [Web Dashboard PWA (HTML/JS)]
-                             (Deployed via Firebase Hosting)
-```
+---
 
-## 1. Web Dashboard (PWA)
-
-The frontend is a vanilla HTML/CSS/JS Single Page Application (SPA). It is built as a PWA, meaning it can be installed on Android/iOS devices directly from the browser for a native app-like experience.
-
-### Features:
-- **Live Dashboard**: Real-time power, voltage, and current with smooth animations.
-- **Daily View**: Hourly generation chart for any selected day.
-- **Monthly View**: Daily generation chart for any selected month.
-- **Demo Mode**: Built-in data generator for testing the UI without hardware.
-- **Dark Theme**: Glassmorphism UI, gradient charts, responsive layout.
-
-### Setup & Deployment:
-1. Create a Firebase Project at [console.firebase.google.com](https://console.firebase.google.com).
-2. Enable **Realtime Database** (Start in test mode or configure rules for authenticated read/write).
-3. Go to Project Settings > General > Add Web App. Copy the `firebaseConfig` object.
-4. Paste the config into `js/firebase-config.js`.
-5. Install Firebase CLI: `npm install -g firebase-tools`
-6. Login: `firebase login`
-7. Edit `.firebaserc` to include your Project ID.
-8. Deploy: `firebase deploy --only hosting`
-
-## 2. Hardware Setup (ESP32)
-
-The hardware component reads DC voltage and current from the solar panel and transmits it to Firebase.
-
-### Components Needed:
-- ESP32 Development Board
-- INA219 DC Current Sensor Breakout (Adafruit or generic)
-- Solar Panel (Max 26V for standard INA219)
-
-### Wiring Diagram:
+## Architecture Overview
 
 ```text
-    ESP32            INA219             SOLAR PANEL
-    ┌───────┐        ┌────────┐
-    │    3V3├───────►│VCC     │         ┌────────┐
-    │    GND├───────►│GND     │         │        │
-    │    22 ├───────►│SCL     │         │   V+ ──┼───┐
-    │    21 ├───────►│SDA     │         │        │   │
-    │       │        │        │         │   V- ──┼─┐ │
-    └───────┘        │    VIN+├─────────┘        │ │ │
-                     │        │                  │ │ │
-                     │    VIN-├────────(To Load)─┘ │ │
-                     └────────┘                    │ │
-                                      (Load GND)───┘ │
-                                                     │
-                                      (Load V+)──────┘
+  +-------------------------------------------------------------------------+
+  |                        PORTABLE INVERTER SYSTEM                         |
+  |                                                                         |
+  |  [Solar Input]       [Battery Bank]       [DC Load]       [AC Inverter] |
+  |       |                    |                  |                 |       |
+  |       v                    v                  v                 v       |
+  |  [INA226 (0x40)]     [INA226 (0x41)]    [INA226 (0x44)]   [INA226 (0x45)]
+  |       |                    |                  |                 |       |
+  |       +--------------------+------------------+-----------------+       |
+  |                                    | (I2C: GPIO 21 / 22)                |
+  |                                    v                                    |
+  |                         [ESP32 Microcontroller]                         |
+  +-------------------------------------------------------------------------+
+                                       |
+                                       | (Wi-Fi / HTTPS REST PUT)
+                                       v
+  +-------------------------------------------------------------------------+
+  |                      FIREBASE REALTIME DATABASE                         |
+  |                                                                         |
+  |   * /live      -> Instantaneous 4-channel telemetry (every 5 seconds)   |
+  |   * /stats     -> Running today, weekly, monthly, all-time energy       |
+  |   * /hourly    -> 24-hour generation profiles by date                   |
+  |   * /daily     -> Historical day-by-day logs by month                   |
+  |   * /control   -> Remote configuration and Wi-Fi reset commands         |
+  +-------------------------------------------------------------------------+
+                                       |
+                                       | (WebSockets / Push Updates)
+                                       v
+  +-------------------------------------------------------------------------+
+  |                   PROGRESSIVE WEB APPLICATION (PWA)                     |
+  |               (Mobile and Desktop Browser / Installable)                |
+  |                                                                         |
+  |   * Live Power Overview & 4-Stage Telemetry                             |
+  |   * Dynamic Battery Percentage by Chemistry (LiFePO4, Lead-Acid, Li-Ion)|
+  |   * Generation History: Daily, Weekly, Monthly, and Yearly Analytics    |
+  |   * Zero-Touch Wi-Fi Hotspot Detection and In-App Configuration        |
+  |   * Offline Service Worker Caching & Simulation Engine                  |
+  +-------------------------------------------------------------------------+
 ```
-*Note: The INA219 measures high-side current. VIN+ connects to the positive output of the solar panel, and VIN- connects to the positive side of your load/battery controller.*
 
-### Flashing the ESP32:
-1. Open `esp32/solar_monitor.ino` in the Arduino IDE.
-2. Install Required Libraries via Library Manager:
-   - `Adafruit INA219`
-   - `ArduinoJson`
-3. Update the WiFi credentials in the sketch.
-4. Update the `firebaseHost` and `firebaseAuth` variables with your Firebase Database URL and Database Secret (found in Firebase Console > Project Settings > Service Accounts > Database Secrets).
-5. Select your ESP32 board and COM port.
-6. Compile and Upload.
+---
 
-## 3. How Data Flows
-1. The **ESP32** wakes up, connects to WiFi, and syncs time via NTP.
-2. Every 5 seconds, it reads Voltage and Current from the **INA219**. Power is calculated ($P = V \times I$).
-3. The ESP32 sends a JSON payload to the `/live` node in **Firebase Realtime Database** via a REST API PUT request.
-4. Concurrently, the ESP32 integrates the power over time to calculate Energy (Watt-hours).
-5. At the end of every hour, it writes the accumulated hourly energy to the `/hourly/YYYY-MM-DD/HH` node.
-6. The **Web Dashboard** listens to the `/live` node using Firebase SDK's `.on('value')`. When the ESP32 updates the database, the UI updates instantly with smooth number animations.
+## Key Features
 
-## 4. Troubleshooting
-- **No data on Dashboard?** Check your Firebase Database Rules. They might be set to `false`. For testing, set them to `".read": true, ".write": true`.
-- **ESP32 not connecting to WiFi?** Ensure you are connecting to a 2.4GHz network, as ESP32 does not support 5GHz.
-- **Charts not showing historical data?** Ensure your device's timezone matches the ESP32's timezone. The ESP32 uses NTP to set its internal clock.
-- **Demo data button doesn't work?** Open browser developer console (F12) to check for Firebase permission errors or missing config.
+### 1. Four-Stage Live Power Telemetry
+Simultaneously tracks instantaneous electrical metrics across all four power stages:
+- **Solar Input**: Solar photovoltaic voltage, charging current, and incoming wattage.
+- **Battery**: Battery bank voltage, net charge/discharge current, and wattage.
+- **DC Load**: Direct current appliances voltage, current consumption, and power.
+- **AC Inverter**: Alternating current inverter voltage, draw current, and load wattage.
+
+### 2. Live Battery Percentage by Chemistry
+Calculates true battery state of charge using chemical open-circuit voltage curves with piecewise linear interpolation:
+- **Lead-Acid / AGM / Gel**: 12V nominal baseline (10.5V empty to 12.8V full).
+- **Lithium Iron Phosphate (LiFePO4 4S)**: 12.8V nominal baseline (10.0V empty to 13.6V full).
+- **Lithium-Ion / NMC (3S)**: 11.1V nominal baseline (9.0V empty to 12.6V full).
+- **Lithium-Ion / NMC (4S)**: 14.8V nominal baseline (12.0V empty to 16.8V full).
+- **System Multipliers**: Full scaling support for 12V (1x), 24V (2x), and 48V (4x) setups.
+- **Custom Range**: Enter arbitrary minimum (0%) and maximum (100%) cutoffs.
+- Visual state of charge bar with green, amber, and red health indicators.
+
+### 3. Multi-Period Generation Analytics
+Interactive dual-layer bar and trend charts powered by Chart.js:
+- **Daily View**: Hourly generation profiles from 12 AM to 11 PM in Watt-hours, total kWh, and peak watts.
+- **Weekly View**: 7-day breakdown (Monday through Sunday) with weekly total, daily average, and best day.
+- **Monthly View**: Day-by-day calendar history (days 1 to 31) with monthly harvest and daily yield average.
+- **Yearly View**: 12-month annual summary (January through December) with annual total, monthly average, and peak month.
+- Quick-toggle period pills (`Daily`, `Weekly`, `Monthly`, `Yearly`) available across all views.
+
+### 4. Zero-Touch Wi-Fi Configuration
+Reconfigure Wi-Fi networks when transporting the inverter to field locations without pressing buttons or connecting to a computer:
+- **Automatic Hotspot on Disconnect**: When the inverter moves out of range of its saved router, the ESP32 automatically launches an access point named `Solar_Setup`.
+- **In-App Hotspot Detection**: The PWA tests connectivity to `http://192.168.4.1` and displays a connection status indicator.
+- **Direct Submission**: Enter new credentials inside the PWA to send them straight to the ESP32 setup endpoint.
+- **One-Tap Portal**: Link directly to `http://192.168.4.1` for the full Wi-Fi scanner interface.
+- **Remote PWA Reset**: When online, dispatch reset commands via Firebase to re-open the setup portal on demand.
+
+### 5. Progressive Web App (PWA) Capabilities
+- **Installable**: Add directly to phone home screens or desktop application menus.
+- **Subpath Compatible**: Fully configured with relative manifest and service worker scopes for GitHub Pages subpath deployment.
+- **Maskable Adaptive Icons**: Includes standard and 80 percent safe-zone maskable icons for Android adaptive launchers.
+- **Offline Caching**: Service worker precaches application assets and caches runtime dependencies.
+- **High-Contrast Dark Theme**: Glassmorphic UI with amber accents optimized for outdoor visibility and mobile OLED power efficiency.
+
+---
+
+## Hardware Configuration
+
+### Components
+1. **ESP32 Development Board**: Dual-core 240 MHz microcontroller with 2.4 GHz Wi-Fi and I2C hardware bus.
+2. **Four INA226 Sensor Modules**: High-side DC voltage and current sensing breakout boards with 16-bit ADCs.
+3. **Four 50A / 75mV Shunt Resistors**: Precision 0.0015 Ohm shunts placed on the positive rail of each stage.
+4. **DC-DC Buck Converter**: Steps down system battery voltage to 5V DC for the microcontroller logic rail.
+
+### I2C Sensor Addressing
+
+| Stage | I2C Address | A1 Pin | A0 Pin | Shunt Resistance | Purpose |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Solar** | `0x40` | GND | GND | 0.0015 Ohm | Photovoltaic generation input |
+| **Battery** | `0x41` | GND | VCC | 0.0015 Ohm | Storage bank charge and discharge |
+| **DC Load** | `0x44` | GND | SDA | 0.0015 Ohm | Direct current equipment load |
+| **Inverter** | `0x45` | GND | SCL | 0.0015 Ohm | Alternating current inverter supply |
+
+### Microcontroller Pin Mapping
+- **GPIO 21**: I2C Data (`SDA`) connected to all INA226 sensor modules.
+- **GPIO 22**: I2C Clock (`SCL`) connected to all INA226 sensor modules.
+- **3.3V / GND**: Common logic rail and system ground reference.
+
+---
+
+## Firmware Overview
+
+The current production firmware is located in `esp32/sketch_oct22a.ino` and `sketch_oct22a.ino`.
+
+### Firmware Features:
+1. **Sensor Calibration**: Applies dedicated hardware offsets (`0.00`, `+0.10`, `-0.55`, `-0.54` V) and filters ghost currents under 0.40 A.
+2. **Numerical Energy Integration**: Continuously integrates power every 5 seconds into cumulative Watt-hours.
+3. **NTP Network Time**: Synchronizes local time with `pool.ntp.org` (configured for GMT+5:30).
+4. **Hourly Rollup**: Writes accumulated Watt-hours and peak power to `/hourly/YYYY-MM-DD/HH.json` at the start of each hour.
+5. **Daily Rollup**: Writes accumulated kilowatt-hours to `/daily/YYYY-MM/DD.json` at midnight and resets the daily accumulator.
+6. **Automatic Reconnection**: Re-launches the `Solar_Setup` captive portal automatically if Wi-Fi connectivity drops.
+
+---
+
+## Firebase Realtime Database Structure
+
+```text
+firebase-root
+  |-- live
+  |     |-- solar:    { volts: 18.5, amps: 2.1,  watts: 38.8 }
+  |     |-- battery:  { volts: 12.6, amps: 1.8,  watts: 22.7 }
+  |     |-- load:     { volts: 12.2, amps: 0.5,  watts: 6.1  }
+  |     `-- inverter: { volts: 230,  amps: 0.1,  watts: 23.0 }
+  |
+  |-- stats
+  |     |-- today_kwh: 1.45
+  |     |-- week_kwh:  12.30
+  |     |-- month_kwh: 54.20
+  |     `-- alltime_kwh: 480.50
+  |
+  |-- hourly
+  |     `-- 2026-10-23
+  |           |-- 08: { energy_wh: 120.4, peak_w: 180.0 }
+  |           `-- 12: { energy_wh: 650.2, peak_w: 820.0 }
+  |
+  |-- daily
+  |     `-- 2026-10
+  |           |-- 22: { energy_kwh: 3.80, peak_w: 840.0 }
+  |           `-- 23: { energy_kwh: 4.25, peak_w: 865.0 }
+  |
+  `-- control
+        |-- reset_wifi: false
+        `-- wifi_config: { ssid: "...", pass: "..." }
+```
+
+### Recommended Security Rules
+In Firebase Console, navigate to **Realtime Database** > **Rules** and apply:
+
+```json
+{
+  "rules": {
+    ".read": true,
+    ".write": false,
+    "control": {
+      ".write": true
+    }
+  }
+}
+```
+
+The ESP32 uses its Database Secret (`?auth=...`) which grants admin write privileges and bypasses rules. The public can read live data while write access is restricted, protecting your database against deletion and tampering.
+
+---
+
+## Battery Chemistry Reference Voltages (12V Baseline)
+
+| State of Charge | Lead-Acid (AGM/Gel) | LiFePO4 (4S) | Li-Ion NMC (3S) | Li-Ion NMC (4S) |
+| :---: | :---: | :---: | :---: | :---: |
+| **100% (Full)** | >= 12.73 V | >= 13.60 V | >= 12.60 V | >= 16.80 V |
+| **90%** | 12.62 V | 13.35 V | 12.30 V | 16.40 V |
+| **80%** | 12.50 V | 13.25 V | 12.00 V | 16.00 V |
+| **70%** | 12.37 V | 13.20 V | 11.70 V | 15.60 V |
+| **60%** | 12.24 V | 13.15 V | 11.45 V | 15.28 V |
+| **50%** | 12.10 V | 13.10 V | 11.25 V | 15.00 V |
+| **40%** | 11.96 V | 13.05 V | 11.10 V | 14.80 V |
+| **30%** | 11.81 V | 13.00 V | 10.95 V | 14.60 V |
+| **20%** | 11.66 V | 12.90 V | 10.65 V | 14.20 V |
+| **10%** | 11.51 V | 12.80 V | 10.20 V | 13.60 V |
+| **0% (Cutoff)** | <= 10.50 V | <= 10.00 V | <= 9.00 V | <= 12.00 V |
+
+Voltages scale automatically when choosing 24V (2x) or 48V (4x) in the Settings tab.
+
+---
+
+## Web Application Setup and Deployment
+
+### 1. Configuration
+Open `js/firebase-config.js` and insert your Firebase Web Configuration object:
+
+```javascript
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "solar-telemetry.firebaseapp.com",
+  databaseURL: "https://solar-telemetry-default-rtdb.firebaseio.com",
+  projectId: "solar-telemetry",
+  storageBucket: "solar-telemetry.firebasestorage.app",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+```
+
+### 2. Local Development
+Run a local static file server:
+
+```bash
+# Using Python
+python3 -m http.server 8080
+
+# Using Node.js
+npx serve .
+```
+
+Open `http://localhost:8080` in your web browser.
+
+### 3. Deploying to GitHub Pages
+1. Push all files to the `master` or `main` branch of your repository.
+2. In GitHub, go to **Settings** > **Pages**.
+3. Under **Build and deployment**, select **Deploy from a branch**.
+4. Choose the `master` (or `main`) branch and root directory `/`.
+5. Click **Save**. The dashboard will be available at `https://<username>.github.io/<repository>/`.
+
+---
+
+## File Structure
+
+```text
+.
+|-- index.html              # Main dashboard single page application
+|-- manifest.json           # Web App Manifest for PWA installation
+|-- sw.js                   # Root service worker for offline asset caching
+|-- firebase.json           # Firebase hosting deployment configuration
+|-- README.md               # Project documentation
+|-- css/
+|   `-- style.css           # Glassmorphic dark theme stylesheet
+|-- js/
+|   |-- app.js              # Application logic, state management, and Firebase handlers
+|   |-- charts.js           # Chart.js initialization for Daily, Weekly, Monthly, Yearly
+|   `-- firebase-config.js  # Firebase SDK credentials and initialization
+|-- icons/
+|   |-- icon-192x192.png    # Standard 192x192 PNG application icon
+|   |-- icon-512x512.png    # Standard 512x512 PNG application icon
+|   |-- icon-maskable-192x192.png # Maskable adaptive icon for Android
+|   `-- icon-maskable-512x512.png # Maskable adaptive icon for Android
+`-- esp32/
+    |-- sketch_oct22a.ino   # Production 4-sensor firmware with energy logging
+    `-- solar_monitor.ino   # Legacy single-sensor reference sketch
+```
