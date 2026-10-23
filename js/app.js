@@ -42,6 +42,8 @@ function initApp() {
       } else if (targetId === 'view-monthly') {
         window.dispatchEvent(new Event('resize'));
         loadMonthlyData();
+      } else if (targetId === 'view-settings') {
+        checkHotspotConnection();
       }
     });
   });
@@ -58,6 +60,9 @@ function initApp() {
 
   // Setup Demo Data Button
   document.getElementById('btnLoadDemoData').addEventListener('click', loadDemoData);
+
+  // Setup Wi-Fi Configuration
+  setupWifiConfiguration();
 
   // Start Firebase listeners
   initFirebaseListeners();
@@ -374,4 +379,104 @@ async function loadDemoData() {
       btn.disabled = false;
     }, 2000);
   }
+}
+
+// ---------------- WI-FI CONFIGURATION ----------------
+
+async function checkHotspotConnection() {
+  const dot = document.getElementById('hotspotDot');
+  const text = document.getElementById('hotspotStatusText');
+  if (!dot || !text) return;
+
+  dot.className = 'dot';
+  text.textContent = 'Detecting Solar_Setup...';
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+  try {
+    await fetch('http://192.168.4.1', {
+      mode: 'no-cors',
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    dot.className = 'dot connected';
+    text.textContent = 'Solar_Setup Hotspot Detected';
+  } catch (err) {
+    clearTimeout(timeoutId);
+    dot.className = 'dot offline';
+    text.textContent = 'Not connected to Solar_Setup';
+  }
+}
+
+function showWifiFeedback(msg, type) {
+  const feedback = document.getElementById('wifiSubmitFeedback');
+  if (!feedback) return;
+  feedback.className = `wifi-feedback ${type}`;
+  feedback.textContent = msg;
+  feedback.style.display = 'block';
+}
+
+function setupWifiConfiguration() {
+  const checkBtn = document.getElementById('btnCheckHotspot');
+  if (checkBtn) {
+    checkBtn.addEventListener('click', checkHotspotConnection);
+  }
+
+  const submitBtn = document.getElementById('btnSubmitWifiCredentials');
+  if (!submitBtn) return;
+
+  submitBtn.addEventListener('click', async () => {
+    const ssidInput = document.getElementById('wifiSsidInput');
+    const passInput = document.getElementById('wifiPassInput');
+    const ssid = ssidInput.value.trim();
+    const pass = passInput.value;
+
+    if (!ssid) {
+      showWifiFeedback('Please enter the Wi-Fi network name (SSID).', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+
+    try {
+      const directUrl = `http://192.168.4.1/wifisave?s=${encodeURIComponent(ssid)}&p=${encodeURIComponent(pass)}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      try {
+        await fetch(directUrl, {
+          mode: 'no-cors',
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+      }
+
+      if (typeof database !== 'undefined') {
+        try {
+          await database.ref('control/wifi_config').set({
+            ssid: ssid,
+            pass: pass,
+            updated_at: Date.now()
+          });
+        } catch (dbErr) {
+          // Firebase offline, proceed with direct configuration
+        }
+      }
+
+      showWifiFeedback(`Credentials sent for "${ssid}". The ESP32 will save and reboot. Once connected, your phone can rejoin your normal Wi-Fi to view live data.`, 'success');
+      ssidInput.value = '';
+      passInput.value = '';
+    } catch (error) {
+      showWifiFeedback('Failed to transmit credentials. Ensure your phone is connected to the "Solar_Setup" Wi-Fi hotspot or tap "Open Wi-Fi Portal".', 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Save and Connect ESP32';
+    }
+  });
 }

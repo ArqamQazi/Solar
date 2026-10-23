@@ -178,6 +178,58 @@
         </div>
       </div>
       
+      <!-- DEVICE WI-FI CONFIGURATION -->
+      <div class="card glass settings-card">
+        <h3><i class="fas fa-wifi"></i> Device Wi-Fi Setup</h3>
+        <p class="help-text">Configure the Wi-Fi network for your solar monitor without touching the device.</p>
+        
+        <div class="hotspot-status-box" id="hotspotStatusBox">
+          <div class="status-indicator">
+            <span class="dot offline" id="hotspotDot"></span>
+            <span id="hotspotStatusText">Checking Solar_Setup Hotspot...</span>
+          </div>
+          <button class="check-btn" id="btnCheckHotspot" type="button" title="Refresh detection"><i class="fas fa-sync-alt"></i></button>
+        </div>
+
+        <div class="wifi-instructions">
+          <div class="instruction-step">
+            <span class="step-num">1</span>
+            <span>Join Wi-Fi hotspot on your phone: <strong class="highlight-text">Solar_Setup</strong></span>
+          </div>
+          <div class="instruction-step">
+            <span class="step-num">2</span>
+            <span>Open the setup portal or submit credentials below:</span>
+          </div>
+        </div>
+
+        <a href="http://192.168.4.1" target="_blank" rel="noopener noreferrer" class="btn primary-btn" id="btnOpenHotspotPortal" style="text-decoration: none; margin-bottom: 14px;">
+          <i class="fas fa-external-link-alt"></i> Open Wi-Fi Portal (192.168.4.1)
+        </a>
+
+        <div class="setting-divider"></div>
+
+        <div class="direct-wifi-form">
+          <h4 class="form-title">Direct Wi-Fi Configuration</h4>
+          <p class="help-text">Send new network credentials directly to the connected ESP32.</p>
+          
+          <div class="input-field-wrapper">
+            <i class="fas fa-network-wired input-icon"></i>
+            <input type="text" id="wifiSsidInput" class="custom-input" placeholder="New Wi-Fi Name (SSID)" autocomplete="off">
+          </div>
+          
+          <div class="input-field-wrapper" style="margin-top: 8px;">
+            <i class="fas fa-key input-icon"></i>
+            <input type="password" id="wifiPassInput" class="custom-input" placeholder="New Wi-Fi Password" autocomplete="off">
+          </div>
+
+          <button id="btnSubmitWifiCredentials" type="button" class="btn secondary-btn" style="margin-top: 12px;">
+            <i class="fas fa-paper-plane"></i> Save and Connect ESP32
+          </button>
+          
+          <div id="wifiSubmitFeedback" class="wifi-feedback" style="display: none;"></div>
+        </div>
+      </div>
+      
       <div class="card glass settings-card">
         <h3>Developer Options</h3>
         <p class="help-text">Populate database with 30 days of simulated solar generation data.</p>

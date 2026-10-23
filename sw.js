@@ -1,4 +1,4 @@
-const CACHE_NAME = 'solar-monitor-v2';
+const CACHE_NAME = 'solar-monitor-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -40,8 +40,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Do not intercept or cache Firebase Realtime Database communication
-  if (event.request.url.includes('firebaseio.com')) {
+  // Do not intercept Firebase or local ESP32 setup communication
+  if (event.request.url.includes('firebaseio.com') || event.request.url.includes('192.168.4.1')) {
     return;
   }
 
