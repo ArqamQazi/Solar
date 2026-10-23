@@ -168,6 +168,27 @@
           <span class="val" id="dailyPeak">0 <small>W</small></span>
         </div>
       </div>
+
+      <div class="consumption-summary-box glass">
+        <div class="consumption-header">
+          <span><i class="fas fa-chart-pie"></i> Energy Consumption Breakdown</span>
+          <span class="consumption-total-tag">Total: <strong id="dailyConsumedTotal">0.00 kWh</strong></span>
+        </div>
+        <div class="consumption-grid">
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-car-battery"></i> Battery Drawn</span>
+            <span class="c-val" id="dailyBatteryDischarged">0.00 <small>kWh</small></span>
+          </div>
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-plug"></i> DC Load</span>
+            <span class="c-val" id="dailyLoadTotal">0.00 <small>kWh</small></span>
+          </div>
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-bolt"></i> Inverter</span>
+            <span class="c-val" id="dailyInverterTotal">0.00 <small>kWh</small></span>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- WEEKLY VIEW -->
@@ -207,6 +228,27 @@
           <span class="val" id="weeklyPeakDay">--</span>
         </div>
       </div>
+
+      <div class="consumption-summary-box glass">
+        <div class="consumption-header">
+          <span><i class="fas fa-chart-pie"></i> Weekly Consumption Breakdown</span>
+          <span class="consumption-total-tag">Total: <strong id="weeklyConsumedTotal">0.00 kWh</strong></span>
+        </div>
+        <div class="consumption-grid">
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-car-battery"></i> Battery Drawn</span>
+            <span class="c-val" id="weeklyBatteryDischarged">0.00 <small>kWh</small></span>
+          </div>
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-plug"></i> DC Load</span>
+            <span class="c-val" id="weeklyLoadTotal">0.00 <small>kWh</small></span>
+          </div>
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-bolt"></i> Inverter</span>
+            <span class="c-val" id="weeklyInverterTotal">0.00 <small>kWh</small></span>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- MONTHLY VIEW -->
@@ -240,6 +282,27 @@
         <div class="summary-card glass">
           <span class="label">Daily Avg</span>
           <span class="val" id="monthlyAvg">0.0 <small>kWh</small></span>
+        </div>
+      </div>
+
+      <div class="consumption-summary-box glass">
+        <div class="consumption-header">
+          <span><i class="fas fa-chart-pie"></i> Monthly Consumption Breakdown</span>
+          <span class="consumption-total-tag">Total: <strong id="monthlyConsumedTotal">0.00 kWh</strong></span>
+        </div>
+        <div class="consumption-grid">
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-car-battery"></i> Battery Drawn</span>
+            <span class="c-val" id="monthlyBatteryDischarged">0.00 <small>kWh</small></span>
+          </div>
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-plug"></i> DC Load</span>
+            <span class="c-val" id="monthlyLoadTotal">0.00 <small>kWh</small></span>
+          </div>
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-bolt"></i> Inverter</span>
+            <span class="c-val" id="monthlyInverterTotal">0.00 <small>kWh</small></span>
+          </div>
         </div>
       </div>
     </section>
@@ -279,6 +342,27 @@
         <div class="summary-card glass">
           <span class="label">Peak Month</span>
           <span class="val" id="yearlyPeakMonth">--</span>
+        </div>
+      </div>
+
+      <div class="consumption-summary-box glass">
+        <div class="consumption-header">
+          <span><i class="fas fa-chart-pie"></i> Yearly Consumption Breakdown</span>
+          <span class="consumption-total-tag">Total: <strong id="yearlyConsumedTotal">0.00 kWh</strong></span>
+        </div>
+        <div class="consumption-grid">
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-car-battery"></i> Battery Drawn</span>
+            <span class="c-val" id="yearlyBatteryDischarged">0.00 <small>kWh</small></span>
+          </div>
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-plug"></i> DC Load</span>
+            <span class="c-val" id="yearlyLoadTotal">0.00 <small>kWh</small></span>
+          </div>
+          <div class="consumption-item">
+            <span class="c-label"><i class="fas fa-bolt"></i> Inverter</span>
+            <span class="c-val" id="yearlyInverterTotal">0.00 <small>kWh</small></span>
+          </div>
         </div>
       </div>
     </section>
@@ -414,6 +498,18 @@
           </div>
         </div>
 
+        <div class="setting-form-group" style="margin-top: 10px;">
+          <label class="form-label" for="batteryCapacityAh">Battery Capacity (Ah)</label>
+          <div class="input-field-wrapper">
+            <i class="fas fa-battery-full input-icon"></i>
+            <input type="number" id="batteryCapacityAh" class="custom-input" min="1" max="2000" step="1" value="100">
+            <span class="unit-tag">Ah</span>
+          </div>
+          <p class="help-text" style="font-size: 11px; margin-top: 4px; color: var(--text-secondary);">
+            Coulomb Counting: integrates actual current (Ah) so percentage stays steady without jumping when solar voltage rises.
+          </p>
+        </div>
+
         <div class="voltage-range-grid" style="margin-top: 10px;">
           <div class="voltage-input-item">
             <label class="form-label" for="batteryMinVolt">Min Voltage (0%)</label>
@@ -480,8 +576,8 @@
   </nav>
 
   <!-- App Scripts -->
-  <script src="js/firebase-config.js?v=10"></script>
-  <script src="js/charts.js?v=10"></script>
-  <script src="js/app.js?v=10"></script>
+  <script src="js/firebase-config.js?v=11"></script>
+  <script src="js/charts.js?v=11"></script>
+  <script src="js/app.js?v=11"></script>
 </body>
 </html>

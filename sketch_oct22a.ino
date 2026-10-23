@@ -20,9 +20,21 @@ const int daylightOffset_sec = 0;
 
 Preferences prefs;
 
+// Generation counters (Solar)
 float currentHourWh = 0.0;
 float currentHourPeakW = 0.0;
 float currentDayWh = 0.0;
+
+// Consumption counters (Battery Discharged, DC Load, Inverter)
+float currentHourConsumedWh = 0.0;
+float currentDayConsumedWh = 0.0;
+float currentHourBatteryDischargedWh = 0.0;
+float currentDayBatteryDischargedWh = 0.0;
+float currentHourLoadWh = 0.0;
+float currentDayLoadWh = 0.0;
+float currentHourInverterWh = 0.0;
+float currentDayInverterWh = 0.0;
+
 int lastHour = -1;
 int currentDayOfMonth = -1;
 
@@ -55,6 +67,13 @@ void saveEnergyToNvs() {
   prefs.putFloat("day_wh", currentDayWh);
   prefs.putFloat("hour_wh", currentHourWh);
   prefs.putFloat("peak_w", currentHourPeakW);
+
+  prefs.putFloat("day_cons_wh", currentDayConsumedWh);
+  prefs.putFloat("hour_cons_wh", currentHourConsumedWh);
+  prefs.putFloat("day_batt_wh", currentDayBatteryDischargedWh);
+  prefs.putFloat("day_load_wh", currentDayLoadWh);
+  prefs.putFloat("day_inv_wh", currentDayInverterWh);
+
   if (currentDayOfMonth > 0) {
     prefs.putInt("day", currentDayOfMonth);
   }
@@ -66,6 +85,13 @@ void loadEnergyFromNvs() {
   float savedDayWh = prefs.getFloat("day_wh", 0.0);
   float savedHourWh = prefs.getFloat("hour_wh", 0.0);
   float savedPeakW = prefs.getFloat("peak_w", 0.0);
+
+  float savedDayConsWh = prefs.getFloat("day_cons_wh", 0.0);
+  float savedHourConsWh = prefs.getFloat("hour_cons_wh", 0.0);
+  float savedDayBattWh = prefs.getFloat("day_batt_wh", 0.0);
+  float savedDayLoadWh = prefs.getFloat("day_load_wh", 0.0);
+  float savedDayInvWh = prefs.getFloat("day_inv_wh", 0.0);
+
   int savedDay = prefs.getInt("day", -1);
   prefs.end();
 
@@ -76,17 +102,35 @@ void loadEnergyFromNvs() {
       currentDayWh = savedDayWh;
       currentHourWh = savedHourWh;
       currentHourPeakW = savedPeakW;
-      Serial.printf("Restored energy from NVS: %.2f Wh for day %d\n", currentDayWh, currentDayOfMonth);
+
+      currentDayConsumedWh = savedDayConsWh;
+      currentHourConsumedWh = savedHourConsWh;
+      currentDayBatteryDischargedWh = savedDayBattWh;
+      currentDayLoadWh = savedDayLoadWh;
+      currentDayInverterWh = savedDayInvWh;
+
+      Serial.printf("Restored energy from NVS: Gen %.2f Wh, Consumed %.2f Wh for day %d\n", 
+                    currentDayWh, currentDayConsumedWh, currentDayOfMonth);
     } else {
       currentDayWh = 0.0;
       currentHourWh = 0.0;
       currentHourPeakW = 0.0;
+      currentDayConsumedWh = 0.0;
+      currentHourConsumedWh = 0.0;
+      currentDayBatteryDischargedWh = 0.0;
+      currentDayLoadWh = 0.0;
+      currentDayInverterWh = 0.0;
       saveEnergyToNvs();
     }
   } else {
     currentDayWh = savedDayWh;
     currentHourWh = savedHourWh;
     currentHourPeakW = savedPeakW;
+    currentDayConsumedWh = savedDayConsWh;
+    currentHourConsumedWh = savedHourConsWh;
+    currentDayBatteryDischargedWh = savedDayBattWh;
+    currentDayLoadWh = savedDayLoadWh;
+    currentDayInverterWh = savedDayInvWh;
   }
 }
 
@@ -102,7 +146,7 @@ void syncTodayKwhFromFirebase() {
     float cloudWh = cloudKwh * 1000.0;
     if (cloudWh > currentDayWh) {
       currentDayWh = cloudWh;
-      Serial.printf("Synced higher energy total from Firebase: %.2f Wh\n", currentDayWh);
+      Serial.printf("Synced higher energy generation from Firebase: %.2f Wh\n", currentDayWh);
       saveEnergyToNvs();
     }
   }
@@ -250,6 +294,9 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     String jsonPayload = "{";
     float solarWatts = 0.0;
+    float batteryDischargeWatts = 0.0;
+    float loadWatts = 0.0;
+    float inverterWatts = 0.0;
 
     for (int i = 0; i < numSensors; i++) {
       int16_t rawVolts = readRegister(addresses[i], 0x02);
@@ -261,8 +308,21 @@ void loop() {
       float amps = shuntVolts / shuntResistance;
       if (abs(amps) < 0.05) amps = 0.00;
 
+      // Invert battery sign so charging is positive (+A) and discharging is negative (-A)
+      if (sensorNames[i] == "battery") {
+        amps = -amps;
+        if (amps < 0) {
+          batteryDischargeWatts = volts * abs(amps);
+        }
+      } else if (sensorNames[i] == "solar") {
+        solarWatts = volts * abs(amps);
+      } else if (sensorNames[i] == "load") {
+        loadWatts = volts * abs(amps);
+      } else if (sensorNames[i] == "inverter") {
+        inverterWatts = volts * abs(amps);
+      }
+
       float watts = volts * abs(amps);
-      if (sensorNames[i] == "solar") solarWatts = watts;
 
       Serial.printf("[%s 0x%02X] rawShunt: %d, Volts: %.2fV, Amps: %.2fA, Watts: %.2fW\n", 
                     sensorNames[i].c_str(), addresses[i], rawShunt, volts, amps, watts);
@@ -282,17 +342,42 @@ void loop() {
     Serial.println("Sent live: " + jsonPayload);
 
     // 2. Numerical integration for energy (5 seconds = 5 / 3600 hours)
-    float deltaWh = solarWatts * (5.0 / 3600.0);
-    currentHourWh += deltaWh;
-    currentDayWh += deltaWh;
+    float deltaHours = 5.0 / 3600.0;
+    float deltaSolarWh = solarWatts * deltaHours;
+    float deltaBattWh = batteryDischargeWatts * deltaHours;
+    float deltaLoadWh = loadWatts * deltaHours;
+    float deltaInvWh = inverterWatts * deltaHours;
+    float deltaConsumedWh = deltaBattWh + deltaLoadWh + deltaInvWh;
+
+    currentHourWh += deltaSolarWh;
+    currentDayWh += deltaSolarWh;
     if (solarWatts > currentHourPeakW) currentHourPeakW = solarWatts;
 
-    // 3. Update running daily total in stats every 30 seconds and save to NVS flash
+    currentHourConsumedWh += deltaConsumedWh;
+    currentDayConsumedWh += deltaConsumedWh;
+    currentHourBatteryDischargedWh += deltaBattWh;
+    currentDayBatteryDischargedWh += deltaBattWh;
+    currentHourLoadWh += deltaLoadWh;
+    currentDayLoadWh += deltaLoadWh;
+    currentHourInverterWh += deltaInvWh;
+    currentDayInverterWh += deltaInvWh;
+
+    // 3. Update running daily totals in stats every 30 seconds and save to NVS flash
     unsigned long currentMillis = millis();
     if (currentMillis - lastStatsUpdate >= 30000) {
       lastStatsUpdate = currentMillis;
       float todayKwh = currentDayWh / 1000.0;
+      float todayConsumedKwh = currentDayConsumedWh / 1000.0;
+      float todayBattDischargedKwh = currentDayBatteryDischargedWh / 1000.0;
+      float todayLoadKwh = currentDayLoadWh / 1000.0;
+      float todayInverterKwh = currentDayInverterWh / 1000.0;
+
       httpPut("/stats/today_kwh.json", String(todayKwh, 3));
+      httpPut("/stats/today_consumed_kwh.json", String(todayConsumedKwh, 3));
+      httpPut("/stats/today_battery_discharged_kwh.json", String(todayBattDischargedKwh, 3));
+      httpPut("/stats/today_load_kwh.json", String(todayLoadKwh, 3));
+      httpPut("/stats/today_inverter_kwh.json", String(todayInverterKwh, 3));
+
       saveEnergyToNvs();
     }
 
@@ -327,7 +412,12 @@ void loop() {
         char dateStr[11];
         strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", &timeinfo);
         String hourPath = "/hourly/" + String(dateStr) + "/" + String(lastHour) + ".json";
-        String hourPayload = "{\"energy_wh\":" + String(currentHourWh, 2) + ",\"peak_w\":" + String(currentHourPeakW, 1) + "}";
+        String hourPayload = "{\"energy_wh\":" + String(currentHourWh, 2) + 
+                             ",\"peak_w\":" + String(currentHourPeakW, 1) + 
+                             ",\"consumed_wh\":" + String(currentHourConsumedWh, 2) + 
+                             ",\"battery_discharged_wh\":" + String(currentHourBatteryDischargedWh, 2) + 
+                             ",\"load_wh\":" + String(currentHourLoadWh, 2) + 
+                             ",\"inverter_wh\":" + String(currentHourInverterWh, 2) + "}";
         httpPut(hourPath, hourPayload);
         Serial.println("Saved hourly rollup: " + hourPayload);
 
@@ -338,16 +428,35 @@ void loop() {
           strftime(dayStr, sizeof(dayStr), "%d", &timeinfo);
 
           float dailyKwh = currentDayWh / 1000.0;
+          float dailyConsumedKwh = currentDayConsumedWh / 1000.0;
+          float dailyBattKwh = currentDayBatteryDischargedWh / 1000.0;
+          float dailyLoadKwh = currentDayLoadWh / 1000.0;
+          float dailyInverterKwh = currentDayInverterWh / 1000.0;
+
           String dayPath = "/daily/" + String(monthStr) + "/" + String(dayStr) + ".json";
-          String dayPayload = "{\"energy_kwh\":" + String(dailyKwh, 2) + ",\"peak_w\":" + String(currentHourPeakW, 1) + "}";
+          String dayPayload = "{\"energy_kwh\":" + String(dailyKwh, 2) + 
+                              ",\"peak_w\":" + String(currentHourPeakW, 1) + 
+                              ",\"consumed_kwh\":" + String(dailyConsumedKwh, 2) + 
+                              ",\"battery_discharged_kwh\":" + String(dailyBattKwh, 2) + 
+                              ",\"load_kwh\":" + String(dailyLoadKwh, 2) + 
+                              ",\"inverter_kwh\":" + String(dailyInverterKwh, 2) + "}";
           httpPut(dayPath, dayPayload);
           Serial.println("Saved daily rollup: " + dayPayload);
 
           currentDayWh = 0.0;
+          currentDayConsumedWh = 0.0;
+          currentDayBatteryDischargedWh = 0.0;
+          currentDayLoadWh = 0.0;
+          currentDayInverterWh = 0.0;
         }
 
         currentHourWh = 0.0;
         currentHourPeakW = 0.0;
+        currentHourConsumedWh = 0.0;
+        currentHourBatteryDischargedWh = 0.0;
+        currentHourLoadWh = 0.0;
+        currentHourInverterWh = 0.0;
+
         lastHour = timeinfo.tm_hour;
         saveEnergyToNvs();
       }

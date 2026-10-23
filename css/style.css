@@ -965,6 +965,69 @@ html {
   color: var(--accent-primary);
 }
 
+/* Consumption Breakdown Cards */
+.consumption-summary-box {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+}
+
+.consumption-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.consumption-total-tag {
+  background: rgba(255, 184, 0, 0.15);
+  color: var(--accent-primary);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.consumption-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.consumption-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.consumption-item .c-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.consumption-item .c-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.consumption-item .c-val small {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: normal;
+}
+
 /* Media queries for larger screens */
 @media (min-width: 768px) {
   .app-content {

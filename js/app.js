@@ -329,7 +329,15 @@ function updateChannelDisplay(prefix, channelData) {
   const v = Number(channelData.volts !== undefined ? channelData.volts : (channelData.voltage || 0));
   const a = Number(channelData.amps !== undefined ? channelData.amps : (channelData.current || 0));
   if (wattsElem) wattsElem.textContent = `${w.toFixed(1)} W`;
-  if (subElem) subElem.textContent = `${v.toFixed(1)} V | ${a.toFixed(1)} A`;
+  if (subElem) {
+    if (prefix === 'chBattery') {
+      const mode = a > 0.05 ? ' (Charging)' : (a < -0.05 ? ' (Discharging)' : ' (Idle)');
+      const sign = a > 0 ? '+' : '';
+      subElem.textContent = `${v.toFixed(1)} V | ${sign}${a.toFixed(1)} A${mode}`;
+    } else {
+      subElem.textContent = `${v.toFixed(1)} V | ${a.toFixed(1)} A`;
+    }
+  }
 }
 
 function updateStats(data) {
@@ -360,11 +368,24 @@ function loadDailyData() {
     // Calculate totals
     let totalWh = 0;
     let peakW = 0;
+    let consumedWh = 0;
+    let battDischargedWh = 0;
+    let loadWh = 0;
+    let invWh = 0;
+
     if (data && typeof data === 'object') {
       Object.values(data).forEach(hour => {
         if (hour && typeof hour === 'object') {
           totalWh += Number(hour.energy_wh || 0);
           if (Number(hour.peak_w || 0) > peakW) peakW = Number(hour.peak_w);
+
+          const c = Number(hour.consumed_wh !== undefined ? hour.consumed_wh : (
+            (Number(hour.battery_discharged_wh || 0)) + (Number(hour.load_wh || 0)) + (Number(hour.inverter_wh || 0))
+          ));
+          consumedWh += c;
+          battDischargedWh += Number(hour.battery_discharged_wh || 0);
+          loadWh += Number(hour.load_wh || 0);
+          invWh += Number(hour.inverter_wh || 0);
         }
       });
     }
@@ -373,6 +394,16 @@ function loadDailyData() {
     const formattedKwh = kwh > 0 && kwh < 0.01 ? kwh.toFixed(3) : kwh.toFixed(2);
     document.getElementById('dailyTotal').innerHTML = `${formattedKwh} <small>kWh</small>`;
     document.getElementById('dailyPeak').innerHTML = `${peakW} <small>W</small>`;
+
+    const cTotal = document.getElementById('dailyConsumedTotal');
+    const cBatt = document.getElementById('dailyBatteryDischarged');
+    const cLoad = document.getElementById('dailyLoadTotal');
+    const cInv = document.getElementById('dailyInverterTotal');
+
+    if (cTotal) cTotal.textContent = `${(consumedWh / 1000).toFixed(2)} kWh`;
+    if (cBatt) cBatt.innerHTML = `${(battDischargedWh / 1000).toFixed(2)} <small>kWh</small>`;
+    if (cLoad) cLoad.innerHTML = `${(loadWh / 1000).toFixed(2)} <small>kWh</small>`;
+    if (cInv) cInv.innerHTML = `${(invWh / 1000).toFixed(2)} <small>kWh</small>`;
   });
 }
 
@@ -391,11 +422,24 @@ function loadMonthlyData() {
     // Calculate totals
     let totalKwh = 0;
     let count = 0;
+    let totalConsumedKwh = 0;
+    let totalBattKwh = 0;
+    let totalLoadKwh = 0;
+    let totalInvKwh = 0;
+
     if (data && typeof data === 'object') {
       Object.values(data).forEach(day => {
         if (day && typeof day === 'object') {
           totalKwh += Number(day.energy_kwh || 0);
           count++;
+
+          const c = Number(day.consumed_kwh !== undefined ? day.consumed_kwh : (
+            (Number(day.battery_discharged_kwh || 0)) + (Number(day.load_kwh || 0)) + (Number(day.inverter_kwh || 0))
+          ));
+          totalConsumedKwh += c;
+          totalBattKwh += Number(day.battery_discharged_kwh || 0);
+          totalLoadKwh += Number(day.load_kwh || 0);
+          totalInvKwh += Number(day.inverter_kwh || 0);
         }
       });
     }
@@ -404,6 +448,16 @@ function loadMonthlyData() {
     
     document.getElementById('monthlyTotal').innerHTML = `${totalKwh.toFixed(1)} <small>kWh</small>`;
     document.getElementById('monthlyAvg').innerHTML = `${avg.toFixed(2)} <small>kWh</small>`;
+
+    const cTotal = document.getElementById('monthlyConsumedTotal');
+    const cBatt = document.getElementById('monthlyBatteryDischarged');
+    const cLoad = document.getElementById('monthlyLoadTotal');
+    const cInv = document.getElementById('monthlyInverterTotal');
+
+    if (cTotal) cTotal.textContent = `${totalConsumedKwh.toFixed(2)} kWh`;
+    if (cBatt) cBatt.innerHTML = `${totalBattKwh.toFixed(2)} <small>kWh</small>`;
+    if (cLoad) cLoad.innerHTML = `${totalLoadKwh.toFixed(2)} <small>kWh</small>`;
+    if (cInv) cInv.innerHTML = `${totalInvKwh.toFixed(2)} <small>kWh</small>`;
   });
 }
 
@@ -422,6 +476,11 @@ function loadWeeklyData() {
     let totalKwh = 0;
     let bestKwh = 0;
     let bestDayName = '--';
+    let totalConsumedKwh = 0;
+    let totalBattKwh = 0;
+    let totalLoadKwh = 0;
+    let totalInvKwh = 0;
+
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const daysKwh = [];
 
@@ -433,6 +492,16 @@ function loadWeeklyData() {
       if (kwh > bestKwh) {
         bestKwh = kwh;
         bestDayName = dayNames[idx];
+      }
+
+      if (val && typeof val === 'object') {
+        const c = Number(val.consumed_kwh !== undefined ? val.consumed_kwh : (
+          (Number(val.battery_discharged_kwh || 0)) + (Number(val.load_kwh || 0)) + (Number(val.inverter_kwh || 0))
+        ));
+        totalConsumedKwh += c;
+        totalBattKwh += Number(val.battery_discharged_kwh || 0);
+        totalLoadKwh += Number(val.load_kwh || 0);
+        totalInvKwh += Number(val.inverter_kwh || 0);
       }
     });
 
@@ -447,6 +516,16 @@ function loadWeeklyData() {
     if (totalElem) totalElem.innerHTML = `${totalKwh.toFixed(2)} <small>kWh</small>`;
     if (avgElem) avgElem.innerHTML = `${avgKwh.toFixed(2)} <small>kWh</small>`;
     if (peakElem) peakElem.innerHTML = bestKwh > 0 ? `${bestDayName} (${bestKwh.toFixed(1)}k)` : '--';
+
+    const cTotal = document.getElementById('weeklyConsumedTotal');
+    const cBatt = document.getElementById('weeklyBatteryDischarged');
+    const cLoad = document.getElementById('weeklyLoadTotal');
+    const cInv = document.getElementById('weeklyInverterTotal');
+
+    if (cTotal) cTotal.textContent = `${totalConsumedKwh.toFixed(2)} kWh`;
+    if (cBatt) cBatt.innerHTML = `${totalBattKwh.toFixed(2)} <small>kWh</small>`;
+    if (cLoad) cLoad.innerHTML = `${totalLoadKwh.toFixed(2)} <small>kWh</small>`;
+    if (cInv) cInv.innerHTML = `${totalInvKwh.toFixed(2)} <small>kWh</small>`;
   });
 }
 
@@ -468,13 +547,28 @@ function loadYearlyData() {
     let peakMonthKwh = 0;
     let peakMonthName = '--';
     let activeMonths = 0;
+    let totalConsumedKwh = 0;
+    let totalBattKwh = 0;
+    let totalLoadKwh = 0;
+    let totalInvKwh = 0;
 
     snapshots.forEach((snap, idx) => {
       const daysData = snap.val();
       let monthSum = 0;
-      if (daysData) {
+      if (daysData && typeof daysData === 'object') {
         Object.values(daysData).forEach(day => {
-          monthSum += Number(day.energy_kwh || 0);
+          if (day && typeof day === 'object') {
+            const kwh = Number(day.energy_kwh || 0);
+            monthSum += kwh;
+
+            const c = Number(day.consumed_kwh !== undefined ? day.consumed_kwh : (
+              (Number(day.battery_discharged_kwh || 0)) + (Number(day.load_kwh || 0)) + (Number(day.inverter_kwh || 0))
+            ));
+            totalConsumedKwh += c;
+            totalBattKwh += Number(day.battery_discharged_kwh || 0);
+            totalLoadKwh += Number(day.load_kwh || 0);
+            totalInvKwh += Number(day.inverter_kwh || 0);
+          }
         });
         if (monthSum > 0) activeMonths++;
       }
@@ -498,6 +592,16 @@ function loadYearlyData() {
     if (totalElem) totalElem.innerHTML = `${yearTotalKwh.toFixed(1)} <small>kWh</small>`;
     if (avgElem) avgElem.innerHTML = `${avgMonthKwh.toFixed(1)} <small>kWh</small>`;
     if (peakElem) peakElem.innerHTML = peakMonthKwh > 0 ? `${peakMonthName} (${peakMonthKwh.toFixed(0)}k)` : '--';
+
+    const cTotal = document.getElementById('yearlyConsumedTotal');
+    const cBatt = document.getElementById('yearlyBatteryDischarged');
+    const cLoad = document.getElementById('yearlyLoadTotal');
+    const cInv = document.getElementById('yearlyInverterTotal');
+
+    if (cTotal) cTotal.textContent = `${totalConsumedKwh.toFixed(2)} kWh`;
+    if (cBatt) cBatt.innerHTML = `${totalBattKwh.toFixed(2)} <small>kWh</small>`;
+    if (cLoad) cLoad.innerHTML = `${totalLoadKwh.toFixed(2)} <small>kWh</small>`;
+    if (cInv) cInv.innerHTML = `${totalInvKwh.toFixed(2)} <small>kWh</small>`;
   });
 }
 
@@ -527,6 +631,10 @@ async function loadDemoData() {
       
       let dailyTotalWh = 0;
       let dailyPeakW = 0;
+      let dailyConsumedWh = 0;
+      let dailyBattWh = 0;
+      let dailyLoadWh = 0;
+      let dailyInvWh = 0;
       const hourlyData = {};
       
       const weatherFactor = 0.5 + (Math.random() * 0.7);
@@ -534,6 +642,9 @@ async function loadDemoData() {
       for (let h = 0; h < 24; h++) {
         let energyWh = 0;
         let peakW = 0;
+        let battWh = 0;
+        let loadWh = 0;
+        let invWh = 0;
         
         if (h >= 6 && h <= 18) {
           const distance = Math.abs(12 - h);
@@ -542,13 +653,35 @@ async function loadDemoData() {
           energyWh = Math.round(power * (0.8 + Math.random() * 0.4));
           peakW = Math.round(energyWh * 1.2);
         }
+
+        if (h >= 8 && h <= 22) {
+          loadWh = Math.round(15 + Math.random() * 20);
+        }
+        if (h >= 18 && h <= 23) {
+          invWh = Math.round(80 + Math.random() * 120);
+          battWh = Math.round(invWh * 0.85);
+        }
+
+        const consumedWh = battWh + loadWh + invWh;
         
-        hourlyData[h] = { energy_wh: energyWh, peak_w: peakW };
+        hourlyData[h] = { 
+          energy_wh: energyWh, 
+          peak_w: peakW,
+          consumed_wh: consumedWh,
+          battery_discharged_wh: battWh,
+          load_wh: loadWh,
+          inverter_wh: invWh
+        };
         dailyTotalWh += energyWh;
+        dailyConsumedWh += consumedWh;
+        dailyBattWh += battWh;
+        dailyLoadWh += loadWh;
+        dailyInvWh += invWh;
         if (peakW > dailyPeakW) dailyPeakW = peakW;
       }
       
       const dailyKwh = parseFloat((dailyTotalWh / 1000).toFixed(2));
+      const dailyConsumedKwh = parseFloat((dailyConsumedWh / 1000).toFixed(2));
       
       if (i < 30) {
         updates[`hourly/${dateStr}`] = hourlyData;
@@ -556,7 +689,11 @@ async function loadDemoData() {
       
       updates[`daily/${monthStr}/${dayStr}`] = {
         energy_kwh: dailyKwh,
-        peak_w: dailyPeakW
+        peak_w: dailyPeakW,
+        consumed_kwh: dailyConsumedKwh,
+        battery_discharged_kwh: parseFloat((dailyBattWh / 1000).toFixed(2)),
+        load_kwh: parseFloat((dailyLoadWh / 1000).toFixed(2)),
+        inverter_kwh: parseFloat((dailyInvWh / 1000).toFixed(2))
       };
       
       if (i < 7) weekTotal += dailyKwh;
@@ -564,8 +701,18 @@ async function loadDemoData() {
       allTimeTotal += dailyKwh;
     }
 
+    const todayHourly = updates[`hourly/${formatDateForInput(today)}`];
+    const todayConsKwh = todayHourly ? Object.values(todayHourly).reduce((a, b) => a + (b.consumed_wh || 0), 0) / 1000 : 0;
+    const todayBattKwh = todayHourly ? Object.values(todayHourly).reduce((a, b) => a + (b.battery_discharged_wh || 0), 0) / 1000 : 0;
+    const todayLoadKwh = todayHourly ? Object.values(todayHourly).reduce((a, b) => a + (b.load_wh || 0), 0) / 1000 : 0;
+    const todayInvKwh = todayHourly ? Object.values(todayHourly).reduce((a, b) => a + (b.inverter_wh || 0), 0) / 1000 : 0;
+
     updates['stats'] = {
-      today_kwh: parseFloat((updates[`hourly/${formatDateForInput(today)}`] ? Object.values(updates[`hourly/${formatDateForInput(today)}`]).reduce((a,b)=>a+(b.energy_wh||0),0)/1000 : 0).toFixed(2)),
+      today_kwh: parseFloat((todayHourly ? Object.values(todayHourly).reduce((a, b) => a + (b.energy_wh || 0), 0) / 1000 : 0).toFixed(2)),
+      today_consumed_kwh: parseFloat(todayConsKwh.toFixed(2)),
+      today_battery_discharged_kwh: parseFloat(todayBattKwh.toFixed(2)),
+      today_load_kwh: parseFloat(todayLoadKwh.toFixed(2)),
+      today_inverter_kwh: parseFloat(todayInvKwh.toFixed(2)),
       week_kwh: parseFloat(weekTotal.toFixed(2)),
       month_kwh: parseFloat(monthTotal.toFixed(2)),
       alltime_kwh: parseFloat(allTimeTotal.toFixed(2))
@@ -850,6 +997,7 @@ const BATTERY_CHEMISTRIES = {
     name: 'Lead-Acid / AGM / Gel (12V)',
     defaultMin: 10.5,
     defaultMax: 14.4,
+    defaultAh: 100,
     curve: [
       [14.40, 100],
       [13.80, 95],
@@ -867,6 +1015,7 @@ const BATTERY_CHEMISTRIES = {
     name: 'Lithium Iron Phosphate (LiFePO4 4S)',
     defaultMin: 10.0,
     defaultMax: 14.4,
+    defaultAh: 100,
     curve: [
       [14.40, 100],
       [13.60, 95],
@@ -885,6 +1034,7 @@ const BATTERY_CHEMISTRIES = {
     name: 'Lithium-Ion NMC (3S, 11.1V)',
     defaultMin: 9.0,
     defaultMax: 12.6,
+    defaultAh: 50,
     curve: [
       [12.60, 100],
       [12.30, 90],
@@ -903,6 +1053,7 @@ const BATTERY_CHEMISTRIES = {
     name: 'Lithium-Ion NMC (4S, 14.8V)',
     defaultMin: 12.0,
     defaultMax: 16.8,
+    defaultAh: 50,
     curve: [
       [16.80, 100],
       [16.40, 90],
@@ -921,6 +1072,7 @@ const BATTERY_CHEMISTRIES = {
     name: 'Custom Voltage Range',
     defaultMin: 10.5,
     defaultMax: 14.4,
+    defaultAh: 50,
     curve: null
   }
 };
@@ -933,6 +1085,9 @@ function getBatteryProfile() {
       if (parsed.type === 'lead-acid' && parsed.maxVolt <= 13.0) {
         parsed.maxVolt = 14.4;
       }
+      if (!parsed.capacityAh || isNaN(parsed.capacityAh)) {
+        parsed.capacityAh = 100;
+      }
       return parsed;
     }
   } catch (e) {
@@ -942,7 +1097,8 @@ function getBatteryProfile() {
     type: 'lead-acid',
     multiplier: 1,
     minVolt: 10.5,
-    maxVolt: 14.4
+    maxVolt: 14.4,
+    capacityAh: 100
   };
 }
 
@@ -954,10 +1110,38 @@ function saveBatteryProfile(profile) {
   }
 }
 
-function calculateBatteryPercentage(volts) {
-  if (volts <= 0 || isNaN(volts)) return 0;
+let coulombState = null;
 
-  const profile = getBatteryProfile();
+function getCoulombState(capacityAh) {
+  if (coulombState && coulombState.capacityAh === capacityAh) {
+    return coulombState;
+  }
+  try {
+    const saved = localStorage.getItem('solar_coulomb_state');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.capacityAh === capacityAh && typeof parsed.remainingAh === 'number') {
+        coulombState = parsed;
+        return coulombState;
+      }
+    }
+  } catch (e) {}
+
+  coulombState = {
+    remainingAh: capacityAh * 0.70,
+    capacityAh: capacityAh,
+    lastTime: Date.now()
+  };
+  return coulombState;
+}
+
+function saveCoulombState(s) {
+  try {
+    localStorage.setItem('solar_coulomb_state', JSON.stringify(s));
+  } catch (e) {}
+}
+
+function calculateVoltageCurvePercentage(volts, profile) {
   const type = profile.type;
   const multiplier = Number(profile.multiplier) || 1;
 
@@ -989,13 +1173,50 @@ function calculateBatteryPercentage(volts) {
   return 0;
 }
 
+function calculateBatteryPercentage(volts, amps) {
+  if (volts <= 0 || isNaN(volts)) return 0;
+
+  const profile = getBatteryProfile();
+  const capacityAh = Number(profile.capacityAh) || 100;
+  const multiplier = Number(profile.multiplier) || 1;
+  const minV = (Number(profile.minVolt) || 10.5) * multiplier;
+  const maxV = (Number(profile.maxVolt) || 14.4) * multiplier;
+
+  const cState = getCoulombState(capacityAh);
+  const now = Date.now();
+  const dtHours = Math.min(Math.max((now - (cState.lastTime || now)) / 3600000, 0), 0.25);
+  cState.lastTime = now;
+
+  // Integrate current: positive amps = charging (adds Ah), negative amps = discharging (removes Ah)
+  if (typeof amps === 'number' && !isNaN(amps) && dtHours > 0) {
+    cState.remainingAh += (amps * dtHours);
+  }
+
+  // Auto-calibrate 100% when near max absorption voltage with low current (tail current)
+  if (volts >= (maxV - 0.2 * multiplier) && amps >= 0 && amps < (capacityAh * 0.05)) {
+    cState.remainingAh = capacityAh;
+  }
+
+  // Auto-calibrate 0% when hitting low cutoff voltage
+  if (volts <= minV) {
+    cState.remainingAh = 0;
+  }
+
+  cState.remainingAh = Math.max(0, Math.min(capacityAh, cState.remainingAh));
+  saveCoulombState(cState);
+
+  const soc = Math.round((cState.remainingAh / capacityAh) * 100);
+  return Math.max(0, Math.min(100, soc));
+}
+
 function updateBatteryDisplay(batteryData) {
   const badge = document.getElementById('batteryPctBadge');
   const bar = document.getElementById('batteryBarFill');
   if (!badge || !bar || !batteryData) return;
 
   const volts = Number(batteryData.volts !== undefined ? batteryData.volts : (batteryData.voltage || 0));
-  const pct = calculateBatteryPercentage(volts);
+  const amps = Number(batteryData.amps !== undefined ? batteryData.amps : (batteryData.current || 0));
+  const pct = calculateBatteryPercentage(volts, amps);
 
   badge.textContent = `${pct}%`;
   bar.style.width = `${pct}%`;
@@ -1042,6 +1263,7 @@ function renderCurveChips(type, multiplier) {
 function setupBatteryConfiguration() {
   const typeSelect = document.getElementById('batteryTypeSelect');
   const multSelect = document.getElementById('systemVoltageSelect');
+  const capacityInput = document.getElementById('batteryCapacityAh');
   const minInput = document.getElementById('batteryMinVolt');
   const maxInput = document.getElementById('batteryMaxVolt');
   const saveBtn = document.getElementById('btnSaveBatteryConfig');
@@ -1052,6 +1274,7 @@ function setupBatteryConfiguration() {
   const profile = getBatteryProfile();
   typeSelect.value = profile.type;
   multSelect.value = String(profile.multiplier || 1);
+  if (capacityInput) capacityInput.value = profile.capacityAh || 100;
   minInput.value = profile.minVolt;
   maxInput.value = profile.maxVolt;
 
@@ -1071,6 +1294,7 @@ function setupBatteryConfiguration() {
     if (chem && selectedType !== 'custom') {
       minInput.value = (chem.defaultMin * mult).toFixed(1);
       maxInput.value = (chem.defaultMax * mult).toFixed(1);
+      if (capacityInput) capacityInput.value = chem.defaultAh || 100;
     }
     renderCurveChips(selectedType, mult);
   });
@@ -1088,17 +1312,27 @@ function setupBatteryConfiguration() {
 
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
+      const capAh = capacityInput ? (parseFloat(capacityInput.value) || 100) : 100;
       const newProfile = {
         type: typeSelect.value,
         multiplier: Number(multSelect.value) || 1,
+        capacityAh: capAh,
         minVolt: parseFloat(minInput.value) || 10.5,
         maxVolt: parseFloat(maxInput.value) || 14.4
       };
       saveBatteryProfile(newProfile);
 
+      // Re-initialize Coulomb state with the new capacity
+      coulombState = {
+        remainingAh: capAh * 0.70,
+        capacityAh: capAh,
+        lastTime: Date.now()
+      };
+      saveCoulombState(coulombState);
+
       if (feedback) {
         feedback.className = 'wifi-feedback success';
-        feedback.textContent = 'Battery profile saved successfully.';
+        feedback.textContent = `Battery profile saved: ${capAh} Ah capacity configured.`;
         feedback.style.display = 'block';
         setTimeout(() => {
           feedback.style.display = 'none';
@@ -1109,8 +1343,12 @@ function setupBatteryConfiguration() {
       if (currentBatterySub) {
         const text = currentBatterySub.textContent;
         const match = text.match(/([\d.]+) V/);
+        const aMatch = text.match(/([+-]?[\d.]+) A/);
         if (match) {
-          updateBatteryDisplay({ volts: parseFloat(match[1]) });
+          updateBatteryDisplay({ 
+            volts: parseFloat(match[1]),
+            amps: aMatch ? parseFloat(aMatch[1]) : 0
+          });
         }
       }
     });
