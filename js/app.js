@@ -1000,13 +1000,13 @@ const BATTERY_CHEMISTRIES = {
     defaultAh: 100,
     curve: [
       [14.40, 100],
-      [13.80, 95],
-      [13.40, 85],
-      [13.20, 75],
-      [12.80, 65],
-      [12.50, 50],
-      [12.20, 35],
-      [12.00, 20],
+      [12.80, 100],
+      [12.60, 90],
+      [12.50, 80],
+      [12.40, 70],
+      [12.25, 50],
+      [12.00, 30],
+      [11.75, 20],
       [11.50, 10],
       [10.50, 0]
     ]
@@ -1113,7 +1113,7 @@ function saveBatteryProfile(profile) {
 let coulombState = null;
 
 function getCoulombState(capacityAh) {
-  if (coulombState && coulombState.capacityAh === capacityAh) {
+  if (coulombState && coulombState.capacityAh === capacityAh && typeof coulombState.remainingAh === 'number') {
     return coulombState;
   }
   try {
@@ -1128,7 +1128,7 @@ function getCoulombState(capacityAh) {
   } catch (e) {}
 
   coulombState = {
-    remainingAh: capacityAh * 0.70,
+    remainingAh: null,
     capacityAh: capacityAh,
     lastTime: Date.now()
   };
@@ -1164,6 +1164,7 @@ function calculateVoltageCurvePercentage(volts, profile) {
     const [vLow, pLow] = scaledCurve[i + 1];
 
     if (volts <= vHigh && volts >= vLow) {
+      if (vHigh === vLow) return pHigh;
       const fraction = (volts - vLow) / (vHigh - vLow);
       const pct = pLow + fraction * (pHigh - pLow);
       return Math.round(pct);
@@ -1179,26 +1180,32 @@ function calculateBatteryPercentage(volts, amps) {
   const profile = getBatteryProfile();
   const capacityAh = Number(profile.capacityAh) || 100;
   const multiplier = Number(profile.multiplier) || 1;
-  const minV = (Number(profile.minVolt) || 10.5) * multiplier;
-  const maxV = (Number(profile.maxVolt) || 14.4) * multiplier;
+  const minV = Number(profile.minVolt) || (10.5 * multiplier);
+  const maxV = Number(profile.maxVolt) || (14.4 * multiplier);
 
   const cState = getCoulombState(capacityAh);
   const now = Date.now();
   const dtHours = Math.min(Math.max((now - (cState.lastTime || now)) / 3600000, 0), 0.25);
   cState.lastTime = now;
 
-  // Integrate current: positive amps = charging (adds Ah), negative amps = discharging (removes Ah)
-  if (typeof amps === 'number' && !isNaN(amps) && dtHours > 0) {
-    cState.remainingAh += (amps * dtHours);
+  const numAmps = (typeof amps === 'number' && !isNaN(amps)) ? amps : 0;
+
+  if (cState.remainingAh === null || cState.remainingAh === undefined || isNaN(cState.remainingAh)) {
+    const initialPct = calculateVoltageCurvePercentage(volts, profile);
+    cState.remainingAh = (initialPct / 100) * capacityAh;
+  } else if (dtHours > 0) {
+    cState.remainingAh += (numAmps * dtHours);
   }
 
-  // Auto-calibrate 100% when near max absorption voltage with low current (tail current)
-  if (volts >= (maxV - 0.2 * multiplier) && amps >= 0 && amps < (capacityAh * 0.05)) {
+  // Auto-calibrate 100% when at max voltage, or absorption tail current, or resting full
+  if (volts >= maxV ||
+      (volts >= (maxV - 0.2 * multiplier) && numAmps >= 0 && numAmps < (capacityAh * 0.05)) ||
+      (volts >= (maxV - 0.1 * multiplier) && Math.abs(numAmps) <= 0.2)) {
     cState.remainingAh = capacityAh;
   }
 
-  // Auto-calibrate 0% when hitting low cutoff voltage
-  if (volts <= minV) {
+  // Auto-calibrate 0% when hitting or resting at low cutoff voltage
+  if (volts <= minV || (volts <= (minV + 0.1 * multiplier) && numAmps <= 0)) {
     cState.remainingAh = 0;
   }
 
@@ -1249,8 +1256,10 @@ function renderCurveChips(type, multiplier) {
   }
 
   const curve = BATTERY_CHEMISTRIES[type].curve;
+  const seenPercentages = new Set();
   curve.forEach(([v, p]) => {
-    if (p === 100 || p === 95 || p === 75 || p === 50 || p === 20 || p === 0) {
+    if ((p === 100 || p === 90 || p === 75 || p === 50 || p === 20 || p === 0) && !seenPercentages.has(p)) {
+      seenPercentages.add(p);
       const scaledV = (v * multiplier).toFixed(1);
       const chip = document.createElement('span');
       chip.className = 'curve-chip';
@@ -1322,9 +1331,25 @@ function setupBatteryConfiguration() {
       };
       saveBatteryProfile(newProfile);
 
-      // Re-initialize Coulomb state with the new capacity
+      let currentVolts = 0;
+      let currentAmps = 0;
+      const currentBatterySub = document.getElementById('chBatterySub');
+      if (currentBatterySub) {
+        const text = currentBatterySub.textContent;
+        const match = text.match(/([\d.]+) V/);
+        const aMatch = text.match(/([+-]?[\d.]+) A/);
+        if (match) currentVolts = parseFloat(match[1]);
+        if (aMatch) currentAmps = parseFloat(aMatch[1]);
+      }
+
+      let initialAh = capAh;
+      if (currentVolts > 0) {
+        const pct = calculateVoltageCurvePercentage(currentVolts, newProfile);
+        initialAh = (pct / 100) * capAh;
+      }
+
       coulombState = {
-        remainingAh: capAh * 0.70,
+        remainingAh: initialAh,
         capacityAh: capAh,
         lastTime: Date.now()
       };
@@ -1339,17 +1364,11 @@ function setupBatteryConfiguration() {
         }, 3000);
       }
 
-      const currentBatterySub = document.getElementById('chBatterySub');
-      if (currentBatterySub) {
-        const text = currentBatterySub.textContent;
-        const match = text.match(/([\d.]+) V/);
-        const aMatch = text.match(/([+-]?[\d.]+) A/);
-        if (match) {
-          updateBatteryDisplay({ 
-            volts: parseFloat(match[1]),
-            amps: aMatch ? parseFloat(aMatch[1]) : 0
-          });
-        }
+      if (currentVolts > 0) {
+        updateBatteryDisplay({ 
+          volts: currentVolts,
+          amps: currentAmps
+        });
       }
     });
   }
