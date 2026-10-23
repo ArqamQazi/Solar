@@ -89,6 +89,9 @@ function initApp() {
   // Setup Wi-Fi Configuration
   setupWifiConfiguration();
 
+  // Setup Battery Configuration
+  setupBatteryConfiguration();
+
   // Start Firebase listeners
   initFirebaseListeners();
 }
@@ -310,7 +313,10 @@ function updateLiveDashboard(data) {
 
   // Update multi-channel power stages
   updateChannelDisplay('chSolar', solar);
-  if (data && data.battery) updateChannelDisplay('chBattery', data.battery);
+  if (data && data.battery) {
+    updateChannelDisplay('chBattery', data.battery);
+    updateBatteryDisplay(data.battery);
+  }
   if (data && data.load) updateChannelDisplay('chLoad', data.load);
   if (data && data.inverter) updateChannelDisplay('chInverter', data.inverter);
 }
@@ -703,4 +709,254 @@ function setupWifiConfiguration() {
       submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Save and Connect ESP32';
     }
   });
+}
+
+// ---------------- BATTERY CONFIGURATION & STATE OF CHARGE ----------------
+
+const BATTERY_CHEMISTRIES = {
+  'lead-acid': {
+    name: 'Lead-Acid / AGM / Gel (12V)',
+    defaultMin: 10.5,
+    defaultMax: 12.8,
+    curve: [
+      [12.73, 100],
+      [12.62, 90],
+      [12.50, 80],
+      [12.37, 70],
+      [12.24, 60],
+      [12.10, 50],
+      [11.96, 40],
+      [11.81, 30],
+      [11.66, 20],
+      [11.51, 10],
+      [10.50, 0]
+    ]
+  },
+  'lifepo4': {
+    name: 'Lithium Iron Phosphate (LiFePO4 4S)',
+    defaultMin: 10.0,
+    defaultMax: 13.6,
+    curve: [
+      [13.60, 100],
+      [13.35, 90],
+      [13.25, 80],
+      [13.20, 70],
+      [13.15, 60],
+      [13.10, 50],
+      [13.05, 40],
+      [13.00, 30],
+      [12.90, 20],
+      [12.80, 10],
+      [10.00, 0]
+    ]
+  },
+  'li-ion-3s': {
+    name: 'Lithium-Ion NMC (3S, 11.1V)',
+    defaultMin: 9.0,
+    defaultMax: 12.6,
+    curve: [
+      [12.60, 100],
+      [12.30, 90],
+      [12.00, 80],
+      [11.70, 70],
+      [11.45, 60],
+      [11.25, 50],
+      [11.10, 40],
+      [10.95, 30],
+      [10.65, 20],
+      [10.20, 10],
+      [9.00, 0]
+    ]
+  },
+  'li-ion-4s': {
+    name: 'Lithium-Ion NMC (4S, 14.8V)',
+    defaultMin: 12.0,
+    defaultMax: 16.8,
+    curve: [
+      [16.80, 100],
+      [16.40, 90],
+      [16.00, 80],
+      [15.60, 70],
+      [15.28, 60],
+      [15.00, 50],
+      [14.80, 40],
+      [14.60, 30],
+      [14.20, 20],
+      [13.60, 10],
+      [12.00, 0]
+    ]
+  },
+  'custom': {
+    name: 'Custom Voltage Range',
+    defaultMin: 10.5,
+    defaultMax: 12.8,
+    curve: null
+  }
+};
+
+function getBatteryProfile() {
+  try {
+    const saved = localStorage.getItem('solar_battery_profile');
+    if (saved) return JSON.parse(saved);
+  } catch (e) {
+    // Local storage unavailable
+  }
+  return {
+    type: 'lead-acid',
+    multiplier: 1,
+    minVolt: 10.5,
+    maxVolt: 12.8
+  };
+}
+
+function saveBatteryProfile(profile) {
+  try {
+    localStorage.setItem('solar_battery_profile', JSON.stringify(profile));
+  } catch (e) {
+    // Local storage error
+  }
+}
+
+function calculateBatteryPercentage(volts) {
+  if (volts <= 0 || isNaN(volts)) return 0;
+
+  const profile = getBatteryProfile();
+  const type = profile.type;
+  const multiplier = Number(profile.multiplier) || 1;
+
+  if (type === 'custom' || !BATTERY_CHEMISTRIES[type] || !BATTERY_CHEMISTRIES[type].curve) {
+    const minV = Number(profile.minVolt) || 10.5;
+    const maxV = Number(profile.maxVolt) || 12.8;
+    if (volts <= minV) return 0;
+    if (volts >= maxV) return 100;
+    return Math.round(((volts - minV) / (maxV - minV)) * 100);
+  }
+
+  const baseCurve = BATTERY_CHEMISTRIES[type].curve;
+  const scaledCurve = baseCurve.map(([v, p]) => [v * multiplier, p]);
+
+  if (volts >= scaledCurve[0][0]) return 100;
+  if (volts <= scaledCurve[scaledCurve.length - 1][0]) return 0;
+
+  for (let i = 0; i < scaledCurve.length - 1; i++) {
+    const [vHigh, pHigh] = scaledCurve[i];
+    const [vLow, pLow] = scaledCurve[i + 1];
+
+    if (volts <= vHigh && volts >= vLow) {
+      const fraction = (volts - vLow) / (vHigh - vLow);
+      const pct = pLow + fraction * (pHigh - pLow);
+      return Math.round(pct);
+    }
+  }
+
+  return 0;
+}
+
+function updateBatteryDisplay(batteryData) {
+  const badge = document.getElementById('batteryPctBadge');
+  const bar = document.getElementById('batteryBarFill');
+  if (!badge || !bar || !batteryData) return;
+
+  const volts = Number(batteryData.volts !== undefined ? batteryData.volts : (batteryData.voltage || 0));
+  const pct = calculateBatteryPercentage(volts);
+
+  badge.textContent = `${pct}%`;
+  bar.style.width = `${pct}%`;
+
+  const levelClass = pct >= 60 ? 'high' : (pct >= 20 ? 'medium' : 'low');
+  badge.className = `battery-pct-badge ${levelClass}`;
+  bar.className = `battery-bar-fill ${levelClass}`;
+}
+
+function renderCurveChips(type, multiplier) {
+  const container = document.getElementById('curveChips');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (type === 'custom' || !BATTERY_CHEMISTRIES[type] || !BATTERY_CHEMISTRIES[type].curve) {
+    container.innerHTML = '<span class="curve-chip">Linear interpolation between Min and Max</span>';
+    return;
+  }
+
+  const curve = BATTERY_CHEMISTRIES[type].curve;
+  curve.forEach(([v, p]) => {
+    if (p % 20 === 0 || p === 100 || p === 0) {
+      const scaledV = (v * multiplier).toFixed(1);
+      const chip = document.createElement('span');
+      chip.className = 'curve-chip';
+      chip.textContent = `${p}%: ${scaledV}V`;
+      container.appendChild(chip);
+    }
+  });
+}
+
+function setupBatteryConfiguration() {
+  const typeSelect = document.getElementById('batteryTypeSelect');
+  const multSelect = document.getElementById('systemVoltageSelect');
+  const minInput = document.getElementById('batteryMinVolt');
+  const maxInput = document.getElementById('batteryMaxVolt');
+  const saveBtn = document.getElementById('btnSaveBatteryConfig');
+  const feedback = document.getElementById('batterySaveFeedback');
+
+  if (!typeSelect || !multSelect || !minInput || !maxInput) return;
+
+  const profile = getBatteryProfile();
+  typeSelect.value = profile.type;
+  multSelect.value = String(profile.multiplier || 1);
+  minInput.value = profile.minVolt;
+  maxInput.value = profile.maxVolt;
+
+  renderCurveChips(profile.type, Number(profile.multiplier || 1));
+
+  typeSelect.addEventListener('change', () => {
+    const selectedType = typeSelect.value;
+    const mult = Number(multSelect.value) || 1;
+    const chem = BATTERY_CHEMISTRIES[selectedType];
+    if (chem && selectedType !== 'custom') {
+      minInput.value = (chem.defaultMin * mult).toFixed(1);
+      maxInput.value = (chem.defaultMax * mult).toFixed(1);
+    }
+    renderCurveChips(selectedType, mult);
+  });
+
+  multSelect.addEventListener('change', () => {
+    const selectedType = typeSelect.value;
+    const mult = Number(multSelect.value) || 1;
+    const chem = BATTERY_CHEMISTRIES[selectedType];
+    if (chem && selectedType !== 'custom') {
+      minInput.value = (chem.defaultMin * mult).toFixed(1);
+      maxInput.value = (chem.defaultMax * mult).toFixed(1);
+    }
+    renderCurveChips(selectedType, mult);
+  });
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      const newProfile = {
+        type: typeSelect.value,
+        multiplier: Number(multSelect.value) || 1,
+        minVolt: parseFloat(minInput.value) || 10.5,
+        maxVolt: parseFloat(maxInput.value) || 12.8
+      };
+      saveBatteryProfile(newProfile);
+
+      if (feedback) {
+        feedback.className = 'wifi-feedback success';
+        feedback.textContent = 'Battery profile saved successfully.';
+        feedback.style.display = 'block';
+        setTimeout(() => {
+          feedback.style.display = 'none';
+        }, 3000);
+      }
+
+      const currentBatterySub = document.getElementById('chBatterySub');
+      if (currentBatterySub) {
+        const text = currentBatterySub.textContent;
+        const match = text.match(/([\d.]+) V/);
+        if (match) {
+          updateBatteryDisplay({ volts: parseFloat(match[1]) });
+        }
+      }
+    });
+  }
 }

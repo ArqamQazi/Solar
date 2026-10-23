@@ -75,10 +75,16 @@
             <div class="channel-power" id="chSolarWatts">0.0 W</div>
             <div class="channel-sub" id="chSolarSub">0.0 V | 0.0 A</div>
           </div>
-          <div class="channel-item">
-            <div class="channel-header"><i class="fas fa-car-battery"></i> Battery</div>
+          <div class="channel-item battery-channel-item">
+            <div class="channel-header">
+              <span><i class="fas fa-car-battery"></i> Battery</span>
+              <span class="battery-pct-badge" id="batteryPctBadge">--%</span>
+            </div>
             <div class="channel-power" id="chBatteryWatts">0.0 W</div>
             <div class="channel-sub" id="chBatterySub">0.0 V | 0.0 A</div>
+            <div class="battery-bar-container">
+              <div class="battery-bar-fill" id="batteryBarFill" style="width: 0%;"></div>
+            </div>
           </div>
           <div class="channel-item">
             <div class="channel-header"><i class="fas fa-plug"></i> DC Load</div>
@@ -349,6 +355,64 @@
           
           <div id="wifiSubmitFeedback" class="wifi-feedback" style="display: none;"></div>
         </div>
+      </div>
+      
+      <!-- BATTERY PROFILE & VOLTAGE SETUP -->
+      <div class="card glass settings-card">
+        <h3><i class="fas fa-battery-three-quarters"></i> Battery Configuration</h3>
+        <p class="help-text">Select your battery chemistry or set custom voltage thresholds to calculate live percentage.</p>
+        
+        <div class="setting-form-group">
+          <label class="form-label" for="batteryTypeSelect">Battery Chemistry</label>
+          <div class="select-wrapper">
+            <select id="batteryTypeSelect" class="custom-select">
+              <option value="lead-acid">Lead-Acid / AGM / Gel (12V)</option>
+              <option value="lifepo4">Lithium Iron Phosphate (LiFePO4 4S)</option>
+              <option value="li-ion-3s">Lithium-Ion / NMC (3S, 11.1V)</option>
+              <option value="li-ion-4s">Lithium-Ion / NMC (4S, 14.8V)</option>
+              <option value="custom">Custom Voltage Range</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="setting-form-group" style="margin-top: 10px;">
+          <label class="form-label" for="systemVoltageSelect">System Multiplier</label>
+          <div class="select-wrapper">
+            <select id="systemVoltageSelect" class="custom-select">
+              <option value="1">12V System (1x)</option>
+              <option value="2">24V System (2x)</option>
+              <option value="4">48V System (4x)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="voltage-range-grid" style="margin-top: 10px;">
+          <div class="voltage-input-item">
+            <label class="form-label" for="batteryMinVolt">Min Voltage (0%)</label>
+            <div class="input-field-wrapper">
+              <input type="number" id="batteryMinVolt" class="custom-input" step="0.1" value="10.5">
+              <span class="unit-tag">V</span>
+            </div>
+          </div>
+          <div class="voltage-input-item">
+            <label class="form-label" for="batteryMaxVolt">Max Voltage (100%)</label>
+            <div class="input-field-wrapper">
+              <input type="number" id="batteryMaxVolt" class="custom-input" step="0.1" value="12.8">
+              <span class="unit-tag">V</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="battery-curve-summary" id="batteryCurveSummary" style="margin-top: 12px;">
+          <div class="curve-header">Active Chemistry Curve (10% to 100%):</div>
+          <div class="curve-chips" id="curveChips"></div>
+        </div>
+
+        <button id="btnSaveBatteryConfig" type="button" class="btn primary-btn" style="margin-top: 14px;">
+          <i class="fas fa-save"></i> Save Battery Setup
+        </button>
+
+        <div id="batterySaveFeedback" class="wifi-feedback" style="display: none;"></div>
       </div>
       
       <div class="card glass settings-card">
