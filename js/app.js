@@ -333,10 +333,21 @@ function updateChannelDisplay(prefix, channelData) {
 }
 
 function updateStats(data) {
-  document.getElementById('statToday').textContent = data.today_kwh.toFixed(1);
-  document.getElementById('statWeek').textContent = data.week_kwh.toFixed(1);
-  document.getElementById('statMonth').textContent = data.month_kwh.toFixed(1);
-  document.getElementById('statAllTime').textContent = data.alltime_kwh.toFixed(1);
+  if (!data) return;
+  const today = Number(data.today_kwh || 0);
+  const week = Number(data.week_kwh || 0);
+  const month = Number(data.month_kwh || 0);
+  const alltime = Number(data.alltime_kwh || 0);
+
+  const todayElem = document.getElementById('statToday');
+  const weekElem = document.getElementById('statWeek');
+  const monthElem = document.getElementById('statMonth');
+  const alltimeElem = document.getElementById('statAllTime');
+
+  if (todayElem) todayElem.textContent = today < 0.1 && today > 0 ? today.toFixed(3) : today.toFixed(1);
+  if (weekElem) weekElem.textContent = week.toFixed(1);
+  if (monthElem) monthElem.textContent = month.toFixed(1);
+  if (alltimeElem) alltimeElem.textContent = alltime.toFixed(1);
 }
 
 function loadDailyData() {
@@ -349,14 +360,18 @@ function loadDailyData() {
     // Calculate totals
     let totalWh = 0;
     let peakW = 0;
-    if (data) {
+    if (data && typeof data === 'object') {
       Object.values(data).forEach(hour => {
-        totalWh += hour.energy_wh || 0;
-        if ((hour.peak_w || 0) > peakW) peakW = hour.peak_w;
+        if (hour && typeof hour === 'object') {
+          totalWh += Number(hour.energy_wh || 0);
+          if (Number(hour.peak_w || 0) > peakW) peakW = Number(hour.peak_w);
+        }
       });
     }
     
-    document.getElementById('dailyTotal').innerHTML = `${(totalWh/1000).toFixed(2)} <small>kWh</small>`;
+    const kwh = totalWh / 1000;
+    const formattedKwh = kwh > 0 && kwh < 0.01 ? kwh.toFixed(3) : kwh.toFixed(2);
+    document.getElementById('dailyTotal').innerHTML = `${formattedKwh} <small>kWh</small>`;
     document.getElementById('dailyPeak').innerHTML = `${peakW} <small>W</small>`;
   });
 }
@@ -376,10 +391,12 @@ function loadMonthlyData() {
     // Calculate totals
     let totalKwh = 0;
     let count = 0;
-    if (data) {
+    if (data && typeof data === 'object') {
       Object.values(data).forEach(day => {
-        totalKwh += day.energy_kwh || 0;
-        count++;
+        if (day && typeof day === 'object') {
+          totalKwh += Number(day.energy_kwh || 0);
+          count++;
+        }
       });
     }
     
@@ -410,7 +427,7 @@ function loadWeeklyData() {
 
     snapshots.forEach((snap, idx) => {
       const val = snap.val();
-      const kwh = val ? Number(val.energy_kwh || 0) : 0;
+      const kwh = (val && typeof val === 'object') ? Number(val.energy_kwh || 0) : 0;
       daysKwh.push(kwh);
       totalKwh += kwh;
       if (kwh > bestKwh) {
@@ -717,36 +734,35 @@ const BATTERY_CHEMISTRIES = {
   'lead-acid': {
     name: 'Lead-Acid / AGM / Gel (12V)',
     defaultMin: 10.5,
-    defaultMax: 12.8,
+    defaultMax: 14.4,
     curve: [
-      [12.73, 100],
-      [12.62, 90],
-      [12.50, 80],
-      [12.37, 70],
-      [12.24, 60],
-      [12.10, 50],
-      [11.96, 40],
-      [11.81, 30],
-      [11.66, 20],
-      [11.51, 10],
+      [14.40, 100],
+      [13.80, 95],
+      [13.40, 85],
+      [13.20, 75],
+      [12.80, 65],
+      [12.50, 50],
+      [12.20, 35],
+      [12.00, 20],
+      [11.50, 10],
       [10.50, 0]
     ]
   },
   'lifepo4': {
     name: 'Lithium Iron Phosphate (LiFePO4 4S)',
     defaultMin: 10.0,
-    defaultMax: 13.6,
+    defaultMax: 14.4,
     curve: [
-      [13.60, 100],
-      [13.35, 90],
-      [13.25, 80],
+      [14.40, 100],
+      [13.60, 95],
+      [13.40, 85],
+      [13.25, 75],
       [13.20, 70],
       [13.15, 60],
       [13.10, 50],
-      [13.05, 40],
-      [13.00, 30],
-      [12.90, 20],
-      [12.80, 10],
+      [13.00, 35],
+      [12.80, 20],
+      [12.00, 10],
       [10.00, 0]
     ]
   },
@@ -789,7 +805,7 @@ const BATTERY_CHEMISTRIES = {
   'custom': {
     name: 'Custom Voltage Range',
     defaultMin: 10.5,
-    defaultMax: 12.8,
+    defaultMax: 14.4,
     curve: null
   }
 };
@@ -805,7 +821,7 @@ function getBatteryProfile() {
     type: 'lead-acid',
     multiplier: 1,
     minVolt: 10.5,
-    maxVolt: 12.8
+    maxVolt: 14.4
   };
 }
 
