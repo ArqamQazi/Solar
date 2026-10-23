@@ -345,23 +345,43 @@
 
         <div class="direct-wifi-form">
           <h4 class="form-title">Direct Wi-Fi Configuration</h4>
-          <p class="help-text">Send new network credentials directly to the connected ESP32.</p>
+          <p class="help-text">Select an available network or enter your Wi-Fi credentials.</p>
           
-          <div class="input-field-wrapper">
+          <div class="network-select-row">
+            <div class="select-wrapper network-select-wrapper">
+              <select id="wifiNetworkSelect" class="custom-select">
+                <option value="">Select available network...</option>
+                <option value="__custom__">+ Enter Hidden / Custom SSID</option>
+              </select>
+            </div>
+            <button id="btnScanWifi" type="button" class="check-btn" title="Scan nearby Wi-Fi networks">
+              <i class="fas fa-satellite-dish"></i>
+            </button>
+          </div>
+
+          <div class="input-field-wrapper" id="customSsidWrapper" style="display: none; margin-top: 8px;">
             <i class="fas fa-network-wired input-icon"></i>
-            <input type="text" id="wifiSsidInput" class="custom-input" placeholder="New Wi-Fi Name (SSID)" autocomplete="off">
+            <input type="text" id="wifiSsidInput" class="custom-input" placeholder="Enter Custom / Hidden SSID" autocomplete="off">
           </div>
           
           <div class="input-field-wrapper" style="margin-top: 8px;">
             <i class="fas fa-key input-icon"></i>
-            <input type="password" id="wifiPassInput" class="custom-input" placeholder="New Wi-Fi Password" autocomplete="off">
+            <input type="password" id="wifiPassInput" class="custom-input" placeholder="Wi-Fi Password" autocomplete="off">
+            <button type="button" id="btnToggleWifiPass" class="input-toggle-btn" title="Show/hide password">
+              <i class="fas fa-eye" id="toggleWifiPassIcon"></i>
+            </button>
           </div>
 
-          <button id="btnSubmitWifiCredentials" type="button" class="btn secondary-btn" style="margin-top: 12px;">
-            <i class="fas fa-paper-plane"></i> Save and Connect ESP32
+          <button id="btnSubmitWifiCredentials" type="button" class="btn primary-btn" style="margin-top: 12px; width: 100%;">
+            <i class="fas fa-paper-plane"></i> Connect ESP32 to Selected Network
           </button>
           
           <div id="wifiSubmitFeedback" class="wifi-feedback" style="display: none;"></div>
+
+          <div class="persistence-notice" style="margin-top: 12px; font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; line-height: 1.4;">
+            <i class="fas fa-shield-alt" style="color: var(--accent-primary); font-size: 14px; flex-shrink: 0;"></i>
+            <span>Energy data is safely stored in ESP32 flash memory and Firebase. Changing Wi-Fi or rebooting never erases today or historical logs.</span>
+          </div>
         </div>
       </div>
       
@@ -460,8 +480,8 @@
   </nav>
 
   <!-- App Scripts -->
-  <script src="js/firebase-config.js?v=9"></script>
-  <script src="js/charts.js?v=9"></script>
-  <script src="js/app.js?v=9"></script>
+  <script src="js/firebase-config.js?v=10"></script>
+  <script src="js/charts.js?v=10"></script>
+  <script src="js/app.js?v=10"></script>
 </body>
 </html>

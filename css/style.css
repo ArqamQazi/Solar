@@ -898,6 +898,30 @@ html {
   color: rgba(255, 255, 255, 0.35);
 }
 
+.network-select-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.network-select-wrapper {
+  flex: 1;
+}
+
+.input-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  margin-left: 8px;
+  transition: color 0.2s;
+}
+
+.input-toggle-btn:hover {
+  color: var(--accent-primary);
+}
+
 .secondary-btn {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);

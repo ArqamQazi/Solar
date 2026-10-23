@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <WiFiManager.h>
 #include <time.h>
+#include <Preferences.h>
 
 String firebaseUrl = "https://solar-telemetry-default-rtdb.firebaseio.com";
 String firebaseAuth = "YNOXhRwaK4JqeLE6YA1uOjSpwPYUxCb1DnNPmQBY";
@@ -17,33 +18,17 @@ const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 19800; // GMT+5:30 (19800 seconds)
 const int daylightOffset_sec = 0;
 
+Preferences prefs;
+
 float currentHourWh = 0.0;
 float currentHourPeakW = 0.0;
 float currentDayWh = 0.0;
 int lastHour = -1;
+int currentDayOfMonth = -1;
+
 unsigned long lastResetCheck = 0;
 unsigned long lastStatsUpdate = 0;
-
-void setup() {
-  Serial.begin(115200);
-  Wire.begin(21, 22);
-
-  Serial.println("\nStarting WiFiManager...");
-
-  WiFiManager wm;
-  wm.setConfigPortalTimeout(180);
-  bool res = wm.autoConnect("Solar_Setup");
-
-  if (!res) {
-    Serial.println("Failed to connect or hit timeout. Rebooting...");
-    delay(3000);
-    ESP.restart();
-  }
-
-  Serial.println("\nWiFi Connected! IP: " + WiFi.localIP().toString());
-
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-}
+unsigned long lastScanUpload = 0;
 
 int16_t readRegister(int address, byte reg) {
   Wire.beginTransmission(address);
@@ -65,6 +50,97 @@ void httpPut(String path, String payload) {
   http.end();
 }
 
+void saveEnergyToNvs() {
+  prefs.begin("solar_data", false);
+  prefs.putFloat("day_wh", currentDayWh);
+  prefs.putFloat("hour_wh", currentHourWh);
+  prefs.putFloat("peak_w", currentHourPeakW);
+  if (currentDayOfMonth > 0) {
+    prefs.putInt("day", currentDayOfMonth);
+  }
+  prefs.end();
+}
+
+void loadEnergyFromNvs() {
+  prefs.begin("solar_data", false);
+  float savedDayWh = prefs.getFloat("day_wh", 0.0);
+  float savedHourWh = prefs.getFloat("hour_wh", 0.0);
+  float savedPeakW = prefs.getFloat("peak_w", 0.0);
+  int savedDay = prefs.getInt("day", -1);
+  prefs.end();
+
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    currentDayOfMonth = timeinfo.tm_mday;
+    if (savedDay == timeinfo.tm_mday) {
+      currentDayWh = savedDayWh;
+      currentHourWh = savedHourWh;
+      currentHourPeakW = savedPeakW;
+      Serial.printf("Restored energy from NVS: %.2f Wh for day %d\n", currentDayWh, currentDayOfMonth);
+    } else {
+      currentDayWh = 0.0;
+      currentHourWh = 0.0;
+      currentHourPeakW = 0.0;
+      saveEnergyToNvs();
+    }
+  } else {
+    currentDayWh = savedDayWh;
+    currentHourWh = savedHourWh;
+    currentHourPeakW = savedPeakW;
+  }
+}
+
+void syncTodayKwhFromFirebase() {
+  HTTPClient http;
+  String url = firebaseUrl + "/stats/today_kwh.json?auth=" + firebaseAuth;
+  http.begin(url);
+  int httpCode = http.GET();
+  if (httpCode == 200) {
+    String payload = http.getString();
+    payload.trim();
+    float cloudKwh = payload.toFloat();
+    float cloudWh = cloudKwh * 1000.0;
+    if (cloudWh > currentDayWh) {
+      currentDayWh = cloudWh;
+      Serial.printf("Synced higher energy total from Firebase: %.2f Wh\n", currentDayWh);
+      saveEnergyToNvs();
+    }
+  }
+  http.end();
+}
+
+void scanAndUploadNetworks() {
+  Serial.println("Scanning nearby 2.4GHz Wi-Fi networks...");
+  int n = WiFi.scanNetworks();
+  if (n < 0) return;
+
+  String json = "[";
+  int count = 0;
+  for (int i = 0; i < n; i++) {
+    String ssid = WiFi.SSID(i);
+    ssid.trim();
+    if (ssid.length() == 0) continue;
+
+    bool duplicate = false;
+    for (int j = 0; j < i; j++) {
+      if (WiFi.SSID(j) == ssid) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (duplicate) continue;
+
+    if (count > 0) json += ",";
+    json += "{\"ssid\":\"" + ssid + "\",\"rssi\":" + String(WiFi.RSSI(i)) + "}";
+    count++;
+  }
+  json += "]";
+  WiFi.scanDelete();
+
+  httpPut("/control/available_networks.json", json);
+  Serial.println("Uploaded " + String(count) + " networks to Firebase.");
+}
+
 bool checkRemoteReset() {
   HTTPClient http;
   String url = firebaseUrl + "/control/reset_wifi.json?auth=" + firebaseAuth;
@@ -79,6 +155,95 @@ bool checkRemoteReset() {
   }
   http.end();
   return shouldReset;
+}
+
+void checkRemoteWifiCommands() {
+  HTTPClient http;
+  String url = firebaseUrl + "/control/scan_wifi.json?auth=" + firebaseAuth;
+  http.begin(url);
+  int httpCode = http.GET();
+  if (httpCode == 200) {
+    String payload = http.getString();
+    if (payload.indexOf("true") >= 0) {
+      httpPut("/control/scan_wifi.json", "false");
+      scanAndUploadNetworks();
+    }
+  }
+  http.end();
+
+  String configUrl = firebaseUrl + "/control/wifi_config.json?auth=" + firebaseAuth;
+  http.begin(configUrl);
+  httpCode = http.GET();
+  if (httpCode == 200) {
+    String payload = http.getString();
+    if (payload.indexOf("\"apply\":true") >= 0 || payload.indexOf("\"apply\": true") >= 0) {
+      int ssidStart = payload.indexOf("\"ssid\":\"") + 8;
+      int ssidEnd = payload.indexOf("\"", ssidStart);
+      int passStart = payload.indexOf("\"pass\":\"") + 8;
+      int passEnd = payload.indexOf("\"", passStart);
+
+      if (ssidStart > 8 && ssidEnd > ssidStart) {
+        String newSsid = payload.substring(ssidStart, ssidEnd);
+        String newPass = "";
+        if (passStart > 8 && passEnd > passStart) {
+          newPass = payload.substring(passStart, passEnd);
+        }
+
+        Serial.println("Switching to new network: " + newSsid);
+        httpPut("/control/wifi_config/apply.json", "false");
+        saveEnergyToNvs();
+
+        WiFi.disconnect();
+        WiFi.begin(newSsid.c_str(), newPass.c_str());
+
+        unsigned long startWait = millis();
+        bool ok = false;
+        while (millis() - startWait < 15000) {
+          if (WiFi.status() == WL_CONNECTED) {
+            ok = true;
+            break;
+          }
+          delay(500);
+        }
+
+        if (ok) {
+          Serial.println("Connected to new Wi-Fi: " + newSsid);
+        } else {
+          Serial.println("Failed to connect. Launching Solar_Setup portal...");
+          WiFiManager wm;
+          wm.setConfigPortalTimeout(180);
+          wm.autoConnect("Solar_Setup");
+        }
+      }
+    }
+  }
+  http.end();
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(21, 22);
+
+  Serial.println("\nStarting WiFiManager...");
+
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(180);
+  bool res = wm.autoConnect("Solar_Setup");
+
+  if (!res) {
+    Serial.println("Failed to connect or hit timeout. Rebooting...");
+    delay(3000);
+    ESP.restart();
+  }
+
+  Serial.println("\nWiFi Connected! IP: " + WiFi.localIP().toString());
+
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  delay(1000);
+  loadEnergyFromNvs();
+  syncTodayKwhFromFirebase();
+  scanAndUploadNetworks();
 }
 
 void loop() {
@@ -122,30 +287,40 @@ void loop() {
     currentDayWh += deltaWh;
     if (solarWatts > currentHourPeakW) currentHourPeakW = solarWatts;
 
-    // 3. Update running daily total in stats every 30 seconds
+    // 3. Update running daily total in stats every 30 seconds and save to NVS flash
     unsigned long currentMillis = millis();
     if (currentMillis - lastStatsUpdate >= 30000) {
       lastStatsUpdate = currentMillis;
       float todayKwh = currentDayWh / 1000.0;
       httpPut("/stats/today_kwh.json", String(todayKwh, 3));
+      saveEnergyToNvs();
     }
 
-    // 4. Check for remote reset request from PWA every 30 seconds
-    if (currentMillis - lastResetCheck >= 30000) {
+    // 4. Check for remote reset and remote Wi-Fi commands every 10 seconds
+    if (currentMillis - lastResetCheck >= 10000) {
       lastResetCheck = currentMillis;
       if (checkRemoteReset()) {
-        Serial.println("PWA requested Wi-Fi reset. Clearing settings and launching portal...");
+        Serial.println("PWA requested Wi-Fi reset. Preserving energy and opening portal...");
+        saveEnergyToNvs();
         httpPut("/control/reset_wifi.json", "false");
         WiFiManager wm;
         wm.resetSettings();
         delay(1000);
         ESP.restart();
       }
+      checkRemoteWifiCommands();
     }
 
-    // 5. Hourly and Daily rollups using NTP time
+    // 5. Periodic Wi-Fi network scan every 10 minutes
+    if (currentMillis - lastScanUpload >= 600000) {
+      lastScanUpload = currentMillis;
+      scanAndUploadNetworks();
+    }
+
+    // 6. Hourly and Daily rollups using NTP time
     struct tm timeinfo;
     if (getLocalTime(&timeinfo)) {
+      currentDayOfMonth = timeinfo.tm_mday;
       if (lastHour == -1) {
         lastHour = timeinfo.tm_hour;
       } else if (lastHour != timeinfo.tm_hour) {
@@ -174,6 +349,7 @@ void loop() {
         currentHourWh = 0.0;
         currentHourPeakW = 0.0;
         lastHour = timeinfo.tm_hour;
+        saveEnergyToNvs();
       }
     }
   } else {

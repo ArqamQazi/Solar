@@ -671,10 +671,96 @@ function setupWifiConfiguration() {
     checkBtn.addEventListener('click', checkHotspotConnection);
   }
 
+  const networkSelect = document.getElementById('wifiNetworkSelect');
+  const customSsidWrapper = document.getElementById('customSsidWrapper');
+  const ssidInput = document.getElementById('wifiSsidInput');
+  const passInput = document.getElementById('wifiPassInput');
+  const scanBtn = document.getElementById('btnScanWifi');
+  const togglePassBtn = document.getElementById('btnToggleWifiPass');
+  const togglePassIcon = document.getElementById('toggleWifiPassIcon');
+
+  if (typeof database !== 'undefined') {
+    database.ref('control/available_networks').on('value', (snapshot) => {
+      const networks = snapshot.val();
+      if (!networkSelect) return;
+      const currentVal = networkSelect.value;
+      networkSelect.innerHTML = '';
+
+      const defOpt = document.createElement('option');
+      defOpt.value = '';
+      defOpt.textContent = 'Select available network...';
+      networkSelect.appendChild(defOpt);
+
+      if (Array.isArray(networks)) {
+        networks.forEach(net => {
+          if (!net || !net.ssid) return;
+          const opt = document.createElement('option');
+          opt.value = net.ssid;
+          const rssiText = net.rssi ? ` (${net.rssi} dBm)` : '';
+          opt.textContent = `${net.ssid}${rssiText}`;
+          networkSelect.appendChild(opt);
+        });
+      }
+
+      const customOpt = document.createElement('option');
+      customOpt.value = '__custom__';
+      customOpt.textContent = '+ Enter Hidden / Custom SSID';
+      networkSelect.appendChild(customOpt);
+
+      if (currentVal) networkSelect.value = currentVal;
+    });
+  }
+
+  if (networkSelect) {
+    networkSelect.addEventListener('change', () => {
+      if (customSsidWrapper) {
+        if (networkSelect.value === '__custom__') {
+          customSsidWrapper.style.display = 'flex';
+          if (ssidInput) ssidInput.focus();
+        } else {
+          customSsidWrapper.style.display = 'none';
+        }
+      }
+    });
+  }
+
+  if (scanBtn) {
+    scanBtn.addEventListener('click', async () => {
+      scanBtn.disabled = true;
+      scanBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+      showWifiFeedback('Scanning nearby 2.4GHz Wi-Fi networks...', 'info');
+
+      if (typeof database !== 'undefined') {
+        try {
+          await database.ref('control/scan_wifi').set(true);
+        } catch (e) {
+          // Firebase offline
+        }
+      }
+
+      setTimeout(() => {
+        scanBtn.disabled = false;
+        scanBtn.innerHTML = '<i class="fas fa-satellite-dish"></i>';
+      }, 4000);
+    });
+  }
+
+  if (togglePassBtn && passInput) {
+    togglePassBtn.addEventListener('click', () => {
+      if (passInput.type === 'password') {
+        passInput.type = 'text';
+        if (togglePassIcon) togglePassIcon.className = 'fas fa-eye-slash';
+      } else {
+        passInput.type = 'password';
+        if (togglePassIcon) togglePassIcon.className = 'fas fa-eye';
+      }
+    });
+  }
+
   const resetBtn = document.getElementById('btnResetWifi');
   if (resetBtn) {
     resetBtn.addEventListener('click', async () => {
-      const confirmed = confirm('Switch Wi-Fi network? The ESP32 will clear its saved Wi-Fi and reboot into "Solar_Setup" hotspot mode in about 30 seconds.');
+      const confirmed = confirm('Switch Wi-Fi network? The ESP32 will preserve all energy data and reboot into "Solar_Setup" hotspot mode in about 30 seconds.');
       if (!confirmed) return;
 
       resetBtn.disabled = true;
@@ -682,7 +768,7 @@ function setupWifiConfiguration() {
 
       try {
         await database.ref('control/reset_wifi').set(true);
-        showWifiFeedback('Reset signal sent to ESP32. In about 30 seconds, the ESP32 will restart into "Solar_Setup" hotspot. Connect your phone Wi-Fi to "Solar_Setup" to pick your new network.', 'success');
+        showWifiFeedback('Reset signal sent to ESP32. Energy data is preserved. In about 30 seconds, connect to "Solar_Setup" to pick your new network.', 'success');
       } catch (err) {
         showWifiFeedback('Failed to send reset signal. Check internet connection.', 'error');
       } finally {
@@ -698,21 +784,27 @@ function setupWifiConfiguration() {
   if (!submitBtn) return;
 
   submitBtn.addEventListener('click', async () => {
-    const ssidInput = document.getElementById('wifiSsidInput');
-    const passInput = document.getElementById('wifiPassInput');
-    const ssid = ssidInput.value.trim();
-    const pass = passInput.value;
+    let selectedSsid = '';
+    if (networkSelect && networkSelect.value === '__custom__') {
+      selectedSsid = ssidInput ? ssidInput.value.trim() : '';
+    } else if (networkSelect && networkSelect.value) {
+      selectedSsid = networkSelect.value;
+    } else if (ssidInput) {
+      selectedSsid = ssidInput.value.trim();
+    }
 
-    if (!ssid) {
-      showWifiFeedback('Please enter the Wi-Fi network name (SSID).', 'error');
+    const pass = passInput ? passInput.value : '';
+
+    if (!selectedSsid) {
+      showWifiFeedback('Please select a Wi-Fi network or enter an SSID.', 'error');
       return;
     }
 
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
 
     try {
-      const directUrl = `http://192.168.4.1/wifisave?s=${encodeURIComponent(ssid)}&p=${encodeURIComponent(pass)}`;
+      const directUrl = `http://192.168.4.1/wifisave?s=${encodeURIComponent(selectedSsid)}&p=${encodeURIComponent(pass)}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3500);
 
@@ -730,23 +822,23 @@ function setupWifiConfiguration() {
       if (typeof database !== 'undefined') {
         try {
           await database.ref('control/wifi_config').set({
-            ssid: ssid,
+            ssid: selectedSsid,
             pass: pass,
-            updated_at: Date.now()
+            apply: true,
+            timestamp: Date.now()
           });
         } catch (dbErr) {
-          // Firebase offline, proceed with direct configuration
+          // Firebase offline
         }
       }
 
-      showWifiFeedback(`Credentials sent for "${ssid}". The ESP32 will save and reboot. Once connected, your phone can rejoin your normal Wi-Fi to view live data.`, 'success');
-      ssidInput.value = '';
-      passInput.value = '';
+      showWifiFeedback(`Connecting ESP32 to "${selectedSsid}". Energy data is preserved. Once connected, live telemetry will continue updating.`, 'success');
+      if (passInput) passInput.value = '';
     } catch (error) {
-      showWifiFeedback('Failed to transmit credentials. Ensure your phone is connected to the "Solar_Setup" Wi-Fi hotspot or tap "Open Wi-Fi Portal".', 'error');
+      showWifiFeedback('Failed to transmit credentials. Check connection and try again.', 'error');
     } finally {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Save and Connect ESP32';
+      submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Connect ESP32 to Selected Network';
     }
   });
 }
