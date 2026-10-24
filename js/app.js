@@ -252,6 +252,64 @@ function animateValue(obj, start, end, duration, decimals = 1) {
 
 // ---------------- FIREBASE INTEGRATION ----------------
 
+let liveWatchdogTimer = null;
+let lastLivePacketString = null;
+let isDeviceOnline = false;
+
+function setSystemOffline() {
+  isDeviceOnline = false;
+  localStorage.setItem('solar_esp32_last_seen', '1');
+
+  const statusBadge = document.getElementById('systemStatus');
+  if (statusBadge) {
+    statusBadge.innerHTML = '<i class="fas fa-power-off"></i> Device Offline';
+    statusBadge.style.color = 'var(--text-secondary)';
+    statusBadge.style.background = 'rgba(255, 255, 255, 0.08)';
+  }
+
+  const dot = document.getElementById('connectionDot');
+  const text = document.getElementById('connectionText');
+  if (dot) dot.className = 'dot offline';
+  if (text) text.textContent = 'Device Offline';
+
+  const powerElem = document.getElementById('livePower');
+  if (powerElem) powerElem.textContent = '0.0';
+  lastPower = 0;
+
+  const liveVolt = document.getElementById('liveVoltage');
+  const liveCurr = document.getElementById('liveCurrent');
+  if (liveVolt) liveVolt.textContent = '0.0 V';
+  if (liveCurr) liveCurr.textContent = '0.0 A';
+
+  const solarW = document.getElementById('chSolarWatts');
+  const solarSub = document.getElementById('chSolarSub');
+  if (solarW) solarW.textContent = '0.0 W';
+  if (solarSub) solarSub.textContent = '0.0 V | 0.0 A';
+
+  const loadW = document.getElementById('chLoadWatts');
+  const loadSub = document.getElementById('chLoadSub');
+  if (loadW) loadW.textContent = '0.0 W';
+  if (loadSub) loadSub.textContent = '0.0 V | 0.0 A';
+
+  const invW = document.getElementById('chInverterWatts');
+  const invSub = document.getElementById('chInverterSub');
+  if (invW) invW.textContent = '0.0 W';
+  if (invSub) invSub.textContent = '0.0 V | 0.0 A';
+
+  const battW = document.getElementById('chBatteryWatts');
+  const battSub = document.getElementById('chBatterySub');
+  if (battW) battW.textContent = '0.0 W';
+  if (battSub) {
+    const t = battSub.textContent;
+    const match = t.match(/([\d.]+) V/);
+    if (match) {
+      battSub.textContent = `${match[1]} V | 0.0 A (Idle)`;
+    } else {
+      battSub.textContent = '0.0 V | 0.0 A (Idle)';
+    }
+  }
+}
+
 function initFirebaseListeners() {
   const connectedRef = firebase.database().ref('.info/connected');
   connectedRef.on('value', (snap) => {
@@ -262,9 +320,35 @@ function initFirebaseListeners() {
   const liveRef = database.ref('live');
   liveRef.on('value', (snapshot) => {
     const data = snapshot.val();
-    if (data) {
+    if (!data) return;
+
+    const packetStr = JSON.stringify(data);
+    const now = Date.now();
+    const lastSeen = Number(localStorage.getItem('solar_esp32_last_seen') || 0);
+
+    if (lastLivePacketString === null) {
+      lastLivePacketString = packetStr;
+      if (lastSeen > 0 && (now - lastSeen) > 12000) {
+        setSystemOffline();
+      } else {
+        updateLiveDashboard(data);
+      }
+    } else {
+      isDeviceOnline = true;
+      lastLivePacketString = packetStr;
+      localStorage.setItem('solar_esp32_last_seen', String(now));
       updateLiveDashboard(data);
+
+      const dot = document.getElementById('connectionDot');
+      const text = document.getElementById('connectionText');
+      if (dot) dot.className = 'dot connected';
+      if (text) text.textContent = 'Connected';
     }
+
+    if (liveWatchdogTimer) clearTimeout(liveWatchdogTimer);
+    liveWatchdogTimer = setTimeout(() => {
+      setSystemOffline();
+    }, 12000);
   });
 
   const statsRef = database.ref('stats');
@@ -282,15 +366,24 @@ function updateConnectionStatus(isConnected) {
   const dbStatus = document.getElementById('dbStatus');
   
   if (isConnected) {
-    dot.className = 'dot connected';
-    text.textContent = 'Connected';
-    dbStatus.textContent = 'Connected';
-    dbStatus.style.color = 'var(--success)';
+    if (isDeviceOnline) {
+      dot.className = 'dot connected';
+      text.textContent = 'Connected';
+    } else {
+      dot.className = 'dot offline';
+      text.textContent = 'Device Offline';
+    }
+    if (dbStatus) {
+      dbStatus.textContent = 'Connected';
+      dbStatus.style.color = 'var(--success)';
+    }
   } else {
     dot.className = 'dot offline';
     text.textContent = 'Offline';
-    dbStatus.textContent = 'Disconnected';
-    dbStatus.style.color = 'var(--danger)';
+    if (dbStatus) {
+      dbStatus.textContent = 'Disconnected';
+      dbStatus.style.color = 'var(--danger)';
+    }
   }
 }
 
@@ -383,13 +476,14 @@ function refreshDashboardSummaryStats(todayKwh, todayConsKwh) {
     let allTimeGenSum = todayKwh;
     let allTimeConsumedSum = todayConsKwh;
 
-    Object.values(allDailyData).forEach(mObj => {
+    Object.entries(allDailyData).forEach(([mStr, mObj]) => {
       if (mObj && typeof mObj === 'object') {
-        Object.values(mObj).forEach(dVal => {
-          if (dVal && typeof dVal === 'object') {
+        Object.entries(mObj).forEach(([dayStr, dVal]) => {
+          const isToday = (mStr === currentMonthStr && parseInt(dayStr, 10) === now.getDate());
+          if (!isToday && dVal && typeof dVal === 'object') {
             allTimeGenSum += Number(dVal.energy_kwh || 0);
             const c = Number(dVal.consumed_kwh !== undefined ? dVal.consumed_kwh : (
-              (Number(dVal.battery_discharged_kwh || 0)) + (Number(dVal.load_kwh || 0)) + (Number(dVal.inverter_wh || 0))
+              (Number(dVal.battery_discharged_kwh || 0)) + (Number(dVal.load_kwh || 0)) + (Number(dVal.inverter_kwh || 0))
             ));
             allTimeConsumedSum += c;
           }
