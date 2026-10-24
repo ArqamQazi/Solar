@@ -396,11 +396,15 @@
           <span>1.0.0</span>
         </div>
         <div class="setting-row">
-          <span>Database</span>
-          <span id="dbStatus">Disconnected</span>
+          <span>Cloud Server</span>
+          <span id="cloudStatus">Disconnected</span>
         </div>
         <div class="setting-row">
-          <span>Last Sync</span>
+          <span>Device Status</span>
+          <span id="deviceStatus">Offline / Standby</span>
+        </div>
+        <div class="setting-row">
+          <span>Last Check-in</span>
           <span id="lastSyncTime">Never</span>
         </div>
       </div>
@@ -412,7 +416,7 @@
         
         <div class="hotspot-status-box" id="hotspotStatusBox">
           <div class="status-indicator">
-            <span class="dot connected" id="hotspotDot"></span>
+            <span class="dot" id="hotspotDot"></span>
             <span id="hotspotStatusText">Checking connection mode...</span>
           </div>
           <button class="check-btn" id="btnCheckHotspot" type="button" title="Refresh detection"><i class="fas fa-sync-alt"></i></button>
@@ -592,8 +596,8 @@
   </nav>
 
   <!-- App Scripts -->
-  <script src="js/firebase-config.js?v=16"></script>
-  <script src="js/charts.js?v=16"></script>
-  <script src="js/app.js?v=16"></script>
+  <script src="js/firebase-config.js?v=17"></script>
+  <script src="js/charts.js?v=17"></script>
+  <script src="js/app.js?v=17"></script>
 </body>
 </html>

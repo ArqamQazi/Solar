@@ -92,6 +92,13 @@ function initApp() {
   // Setup Battery Configuration
   setupBatteryConfiguration();
 
+  // Restore last known check-in timestamp if available
+  const savedLastSeen = Number(localStorage.getItem('solar_esp32_last_seen') || 0);
+  const syncTimeElem = document.getElementById('lastSyncTime');
+  if (syncTimeElem && savedLastSeen > 1000000000000) {
+    syncTimeElem.textContent = new Date(savedLastSeen).toLocaleString('en-IN', {hour12: true});
+  }
+
   // Start Firebase listeners
   initFirebaseListeners();
 }
@@ -258,7 +265,7 @@ let isDeviceOnline = false;
 
 function setSystemOffline() {
   isDeviceOnline = false;
-  localStorage.setItem('solar_esp32_last_seen', '1');
+  localStorage.setItem('solar_esp32_device_online', 'false');
 
   const statusBadge = document.getElementById('systemStatus');
   if (statusBadge) {
@@ -271,6 +278,19 @@ function setSystemOffline() {
   const text = document.getElementById('connectionText');
   if (dot) dot.className = 'dot offline';
   if (text) text.textContent = 'Device Offline';
+
+  const deviceStatus = document.getElementById('deviceStatus');
+  if (deviceStatus) {
+    deviceStatus.textContent = 'Offline / Standby';
+    deviceStatus.style.color = 'var(--text-secondary)';
+  }
+
+  const hotspotDot = document.getElementById('hotspotDot');
+  const hotspotText = document.getElementById('hotspotStatusText');
+  if (hotspotDot && hotspotText && (hotspotText.textContent.includes('Normal Mode') || hotspotText.textContent.includes('Checking'))) {
+    hotspotDot.className = 'dot offline';
+    hotspotText.textContent = 'Device Offline / Unpowered';
+  }
 
   const powerElem = document.getElementById('livePower');
   if (powerElem) powerElem.textContent = '0.0';
@@ -325,10 +345,11 @@ function initFirebaseListeners() {
     const packetStr = JSON.stringify(data);
     const now = Date.now();
     const lastSeen = Number(localStorage.getItem('solar_esp32_last_seen') || 0);
+    const wasOffline = localStorage.getItem('solar_esp32_device_online') === 'false';
 
     if (lastLivePacketString === null) {
       lastLivePacketString = packetStr;
-      if (lastSeen > 0 && (now - lastSeen) > 12000) {
+      if (wasOffline || (lastSeen > 0 && (now - lastSeen) > 12000)) {
         setSystemOffline();
       } else {
         updateLiveDashboard(data);
@@ -337,12 +358,16 @@ function initFirebaseListeners() {
       isDeviceOnline = true;
       lastLivePacketString = packetStr;
       localStorage.setItem('solar_esp32_last_seen', String(now));
+      localStorage.setItem('solar_esp32_device_online', 'true');
       updateLiveDashboard(data);
+      updateConnectionStatus(true);
 
-      const dot = document.getElementById('connectionDot');
-      const text = document.getElementById('connectionText');
-      if (dot) dot.className = 'dot connected';
-      if (text) text.textContent = 'Connected';
+      const hotspotDot = document.getElementById('hotspotDot');
+      const hotspotText = document.getElementById('hotspotStatusText');
+      if (hotspotDot && hotspotText && hotspotText.textContent.includes('Device Offline')) {
+        hotspotDot.className = 'dot connected';
+        hotspotText.textContent = 'Normal Mode (ESP32 online via router)';
+      }
     }
 
     if (liveWatchdogTimer) clearTimeout(liveWatchdogTimer);
@@ -363,26 +388,39 @@ function initFirebaseListeners() {
 function updateConnectionStatus(isConnected) {
   const dot = document.getElementById('connectionDot');
   const text = document.getElementById('connectionText');
-  const dbStatus = document.getElementById('dbStatus');
+  const cloudStatus = document.getElementById('cloudStatus') || document.getElementById('dbStatus');
+  const deviceStatus = document.getElementById('deviceStatus');
   
   if (isConnected) {
-    if (isDeviceOnline) {
-      dot.className = 'dot connected';
-      text.textContent = 'Connected';
-    } else {
-      dot.className = 'dot offline';
-      text.textContent = 'Device Offline';
+    if (cloudStatus) {
+      cloudStatus.textContent = 'Connected';
+      cloudStatus.style.color = 'var(--success)';
     }
-    if (dbStatus) {
-      dbStatus.textContent = 'Connected';
-      dbStatus.style.color = 'var(--success)';
+    if (isDeviceOnline) {
+      if (dot) dot.className = 'dot connected';
+      if (text) text.textContent = 'Connected';
+      if (deviceStatus) {
+        deviceStatus.textContent = 'Online / Streaming';
+        deviceStatus.style.color = 'var(--success)';
+      }
+    } else {
+      if (dot) dot.className = 'dot offline';
+      if (text) text.textContent = 'Device Offline';
+      if (deviceStatus) {
+        deviceStatus.textContent = 'Offline / Standby';
+        deviceStatus.style.color = 'var(--text-secondary)';
+      }
     }
   } else {
-    dot.className = 'dot offline';
-    text.textContent = 'Offline';
-    if (dbStatus) {
-      dbStatus.textContent = 'Disconnected';
-      dbStatus.style.color = 'var(--danger)';
+    if (dot) dot.className = 'dot offline';
+    if (text) text.textContent = 'Offline';
+    if (cloudStatus) {
+      cloudStatus.textContent = 'Disconnected';
+      cloudStatus.style.color = 'var(--danger)';
+    }
+    if (deviceStatus) {
+      deviceStatus.textContent = 'Offline / Standby';
+      deviceStatus.style.color = 'var(--text-secondary)';
     }
   }
 }
@@ -391,7 +429,11 @@ let lastPower = 0;
 function updateLiveDashboard(data) {
   const now = new Date();
   document.getElementById('lastUpdated').textContent = now.toLocaleTimeString('en-IN', {hour: '2-digit', minute:'2-digit', hour12: true});
-  document.getElementById('lastSyncTime').textContent = now.toLocaleString('en-IN', {hour12: true});
+  const syncTimeElem = document.getElementById('lastSyncTime');
+  if (syncTimeElem) {
+    syncTimeElem.textContent = now.toLocaleString('en-IN', {hour12: true});
+  }
+  localStorage.setItem('solar_esp32_last_seen', String(now.getTime()));
 
   // Support 4-channel payload (data.solar, data.battery, data.load, data.inverter) or legacy flat payload
   const solar = (data && data.solar) ? data.solar : (data || {});
@@ -1110,8 +1152,13 @@ async function checkHotspotConnection() {
     text.textContent = 'Solar_Setup Hotspot Detected (Setup Mode)';
   } catch (err) {
     clearTimeout(timeoutId);
-    dot.className = 'dot connected';
-    text.textContent = 'Normal Mode (ESP32 online via router)';
+    if (isDeviceOnline) {
+      dot.className = 'dot connected';
+      text.textContent = 'Normal Mode (ESP32 online via router)';
+    } else {
+      dot.className = 'dot offline';
+      text.textContent = 'Device Offline / Unpowered';
+    }
   }
 }
 
